@@ -24,12 +24,20 @@ export function periodQuarter(date: Date = new Date()): string {
   return `${year}-Q${Math.ceil(month / 3)}`
 }
 
+export function periodYear(date: Date = new Date()): string {
+  return partsInZone(date).year
+}
+
 export function currentPeriodMonth(): string {
   return periodMonth()
 }
 
 export function currentPeriodQuarter(): string {
   return periodQuarter()
+}
+
+export function currentPeriodYear(): string {
+  return periodYear()
 }
 
 export function shiftMonthPeriod(period: string, delta: number): string {
@@ -46,4 +54,8 @@ export function shiftQuarterPeriod(period: string, delta: number): string {
   const year = Math.floor(total / 4)
   const quarter = (((total % 4) + 4) % 4) + 1
   return `${year}-Q${quarter}`
+}
+
+export function shiftYearPeriod(period: string, delta: number): string {
+  return String(Number(period) + delta)
 }

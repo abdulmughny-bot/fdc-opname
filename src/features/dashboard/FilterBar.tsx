@@ -1,9 +1,20 @@
 import type { VisibleClinic } from '../auth'
-import { currentPeriodMonth, currentPeriodQuarter, shiftMonthPeriod, shiftQuarterPeriod } from '../../lib/period'
+import {
+  currentPeriodMonth,
+  currentPeriodQuarter,
+  currentPeriodYear,
+  shiftMonthPeriod,
+  shiftQuarterPeriod,
+  shiftYearPeriod,
+} from '../../lib/period'
 import type { DashboardFilters, DerivedStatus } from './types'
 
 const STATUS_OPTIONS: DerivedStatus[] = ['Active', 'In Progress', 'Finished']
 const AUDIT_TYPE_OPTIONS = ['Offline', 'Self'] as const
+
+function todayIso() {
+  return new Date().toISOString().slice(0, 10)
+}
 
 export function FilterBar({
   clinics,
@@ -17,17 +28,28 @@ export function FilterBar({
   onChange: (next: DashboardFilters) => void
 }) {
   function setPeriodType(periodType: DashboardFilters['periodType']) {
-    onChange({
-      ...filters,
-      periodType,
-      period: periodType === 'month' ? currentPeriodMonth() : currentPeriodQuarter(),
-    })
+    if (periodType === 'custom') {
+      onChange({ ...filters, periodType, customRange: filters.customRange ?? { start: todayIso(), end: todayIso() } })
+      return
+    }
+    const period =
+      periodType === 'month' ? currentPeriodMonth() : periodType === 'quarter' ? currentPeriodQuarter() : currentPeriodYear()
+    onChange({ ...filters, periodType, period })
   }
 
   function shiftPeriod(delta: number) {
     const period =
-      filters.periodType === 'month' ? shiftMonthPeriod(filters.period, delta) : shiftQuarterPeriod(filters.period, delta)
+      filters.periodType === 'month'
+        ? shiftMonthPeriod(filters.period, delta)
+        : filters.periodType === 'quarter'
+          ? shiftQuarterPeriod(filters.period, delta)
+          : shiftYearPeriod(filters.period, delta)
     onChange({ ...filters, period })
+  }
+
+  function setCustomRange(patch: Partial<{ start: string; end: string }>) {
+    const base = filters.customRange ?? { start: todayIso(), end: todayIso() }
+    onChange({ ...filters, customRange: { ...base, ...patch } })
   }
 
   function toggleClinic(id: string) {
@@ -48,24 +70,46 @@ export function FilterBar({
         >
           <option value="month">Month</option>
           <option value="quarter">Quarter</option>
+          <option value="year">Year</option>
+          <option value="custom">Custom range</option>
         </select>
-        <button
-          type="button"
-          onClick={() => shiftPeriod(-1)}
-          className="w-6 h-6 rounded border border-line text-ink-soft hover:border-ink-soft"
-          aria-label="Previous period"
-        >
-          ‹
-        </button>
-        <span className="font-mono text-xs text-ink min-w-[64px] text-center">{filters.period}</span>
-        <button
-          type="button"
-          onClick={() => shiftPeriod(1)}
-          className="w-6 h-6 rounded border border-line text-ink-soft hover:border-ink-soft"
-          aria-label="Next period"
-        >
-          ›
-        </button>
+        {filters.periodType === 'custom' ? (
+          <>
+            <input
+              type="date"
+              value={filters.customRange?.start ?? todayIso()}
+              onChange={(e) => setCustomRange({ start: e.target.value })}
+              className="rounded-md border border-line text-xs font-mono px-2 py-1.5"
+            />
+            <span className="text-ink-soft text-xs">to</span>
+            <input
+              type="date"
+              value={filters.customRange?.end ?? todayIso()}
+              onChange={(e) => setCustomRange({ end: e.target.value })}
+              className="rounded-md border border-line text-xs font-mono px-2 py-1.5"
+            />
+          </>
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={() => shiftPeriod(-1)}
+              className="w-6 h-6 rounded border border-line text-ink-soft hover:border-ink-soft"
+              aria-label="Previous period"
+            >
+              ‹
+            </button>
+            <span className="font-mono text-xs text-ink min-w-[64px] text-center">{filters.period}</span>
+            <button
+              type="button"
+              onClick={() => shiftPeriod(1)}
+              className="w-6 h-6 rounded border border-line text-ink-soft hover:border-ink-soft"
+              aria-label="Next period"
+            >
+              ›
+            </button>
+          </>
+        )}
       </div>
 
       <details className="relative">

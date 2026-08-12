@@ -39,6 +39,15 @@ function StatusPill({ status }: { status: SessionWithStations['derivedStatus'] }
   )
 }
 
+// Straight (unweighted) average of each submitted station's own ketersesuaian
+// — matches the same convention used for the company-wide gauge and by-clinic
+// table on the dashboard, so the number reads the same everywhere it appears.
+function sessionKetersesuaian(stations: SessionWithStations['stations']) {
+  const pcts = stations.filter((s) => s.status === 'Submitted' && s.ketersesuaian !== null).map((s) => s.ketersesuaian as number)
+  if (pcts.length === 0) return null
+  return Math.round((pcts.reduce((a, b) => a + b, 0) / pcts.length) * 10) / 10
+}
+
 export function SessionsList({
   items,
   onSelect,
@@ -59,6 +68,7 @@ export function SessionsList({
     <div>
       {items.map(({ session, stations, derivedStatus }) => {
         const submitted = stations.filter((s) => s.status === 'Submitted').length
+        const pct = sessionKetersesuaian(stations)
         return (
           <button
             key={session.id}
@@ -74,6 +84,7 @@ export function SessionsList({
               </div>
             </div>
             <div className="flex items-center gap-3.5 min-w-[150px] justify-end">
+              {pct !== null && <span className="font-mono text-xs text-ink-soft">{pct}% avg</span>}
               <TrackBadge auditType={session.audit_type} />
               <StatusPill status={derivedStatus} />
             </div>

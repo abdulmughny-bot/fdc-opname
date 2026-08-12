@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useAuth } from '../auth'
-import { periodMonth, periodQuarter } from '../../lib/period'
+import { periodMonth, periodQuarter, periodYear } from '../../lib/period'
 import { useDashboardData } from './useDashboardData'
 import { FilterBar } from './FilterBar'
 import { StatRow } from './StatRow'
@@ -32,37 +32,50 @@ export function Dashboard({
       if (filters.status !== 'all' && derivedStatus !== filters.status) return false
       if (filters.auditType !== 'all' && session.audit_type !== filters.auditType) return false
       if (filters.agent !== 'all' && session.started_by !== filters.agent) return false
+      if (filters.periodType === 'custom') {
+        if (!filters.customRange) return true
+        const startedDate = session.started_at.slice(0, 10)
+        return startedDate >= filters.customRange.start && startedDate <= filters.customRange.end
+      }
+      const started = new Date(session.started_at)
       const sessionPeriod =
-        filters.periodType === 'month' ? periodMonth(new Date(session.started_at)) : periodQuarter(new Date(session.started_at))
-      if (sessionPeriod !== filters.period) return false
-      return true
+        filters.periodType === 'month'
+          ? periodMonth(started)
+          : filters.periodType === 'quarter'
+            ? periodQuarter(started)
+            : periodYear(started)
+      return sessionPeriod === filters.period
     })
   }, [sessions, filters])
 
   const activeCount = filtered.filter((s) => s.session.status === 'Active').length
   const finishedCount = filtered.filter((s) => s.session.status === 'Finished').length
 
+  // Ketersesuaian is a straight (unweighted) average of each submitted
+  // station's own % — not a pooled matched/scorable ratio. A clinic with one
+  // 20-item station and one 200-item station counts them equally, matching
+  // how the number reads in the sessions/stations lists.
   const { companyPct, totalFilled, clinicRows } = useMemo(() => {
     let totalFilled = 0
-    let totalMatched = 0
-    const byClinic = new Map<string, { matched: number; total: number }>()
+    const companyPcts: number[] = []
+    const byClinic = new Map<string, number[]>()
     filtered.forEach(({ session, stations }) => {
       if (session.status !== 'Finished') return
       stations
-        .filter((s) => s.status === 'Submitted')
+        .filter((s) => s.status === 'Submitted' && s.ketersesuaian !== null)
         .forEach((s) => {
-          totalFilled += s.filled_count
-          totalMatched += s.matched_count
-          const entry = byClinic.get(session.clinic_name) ?? { matched: 0, total: 0 }
-          entry.matched += s.matched_count
-          entry.total += s.filled_count
+          totalFilled += s.scorable_count
+          companyPcts.push(s.ketersesuaian as number)
+          const entry = byClinic.get(session.clinic_name) ?? []
+          entry.push(s.ketersesuaian as number)
           byClinic.set(session.clinic_name, entry)
         })
     })
-    const companyPct = totalFilled ? Math.round((totalMatched / totalFilled) * 1000) / 10 : null
+    const mean = (arr: number[]) => Math.round((arr.reduce((a, b) => a + b, 0) / arr.length) * 10) / 10
+    const companyPct = companyPcts.length ? mean(companyPcts) : null
     const clinicRows: ClinicRow[] = Array.from(byClinic.entries())
-      .filter(([, d]) => d.total > 0)
-      .map(([name, d]) => ({ name, pct: Math.round((d.matched / d.total) * 1000) / 10 }))
+      .filter(([, pcts]) => pcts.length > 0)
+      .map(([name, pcts]) => ({ name, pct: mean(pcts) }))
     return { companyPct, totalFilled, clinicRows }
   }, [filtered])
 
