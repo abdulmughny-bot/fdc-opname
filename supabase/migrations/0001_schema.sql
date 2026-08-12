@@ -294,29 +294,36 @@ create policy "scoped expired" on expired_log for all
 
 -- ============================================================================
 -- ACCESS PROVISIONING (allow-list gates who ever gets a profile)
+--
+-- NOTE: auth.users lives in the shared `auth` schema (one copy across dev/
+-- staging/prod). A trigger on it can only ever be bound to ONE schema's
+-- version of a provisioning function — running this migration against a
+-- second or third schema would either fail outright (trigger already
+-- exists) or silently rebind provisioning to the wrong environment. So
+-- provisioning is a function the client calls itself right after sign-in,
+-- through the schema-scoped Supabase client — it always resolves `profiles`
+-- and `allowed_users` in the caller's own dev/staging/prod schema.
 -- ============================================================================
 
-create or replace function handle_new_user()
-returns trigger as $$
-declare v_allowed allowed_users;
+create or replace function provision_self()
+returns void as $$
+declare v_allowed allowed_users; v_email text;
 begin
-  select * into v_allowed from allowed_users where lower(email) = lower(new.email);
+  v_email := (select email from auth.users where id = auth.uid());
+  if v_email is null then raise exception 'Not authenticated.'; end if;
+  select * into v_allowed from allowed_users where lower(email) = lower(v_email);
   if v_allowed.email is not null then
-    insert into public.profiles (id, email, name, role, all_clinics)
-    values (new.id, new.email, v_allowed.name, v_allowed.role, v_allowed.all_clinics)
+    insert into profiles (id, email, name, role, all_clinics)
+    values (auth.uid(), v_email, v_allowed.name, v_allowed.role, v_allowed.all_clinics)
     on conflict (id) do nothing;
   end if;
-  return new;
 end;
 $$ language plpgsql security definer;
-
-create trigger on_auth_user_created
-  after insert on auth.users for each row execute function handle_new_user();
 
 create or replace function relink_allowed_users()
 returns void as $$
 begin
-  insert into public.profiles (id, email, name, role, all_clinics)
+  insert into profiles (id, email, name, role, all_clinics)
   select u.id, u.email, a.name, a.role, a.all_clinics
   from auth.users u join allowed_users a on lower(a.email) = lower(u.email)
   on conflict (id) do nothing;

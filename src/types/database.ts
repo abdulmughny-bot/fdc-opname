@@ -8,8 +8,12 @@ export type SessionStatus = 'Active' | 'Finished'
 export type StationStatus = 'Not Started' | 'In Progress' | 'Submitted'
 export type UploadKind = 'Sistem' | 'ClinicTemplate'
 
-export interface Database {
-  public: {
+// dev/staging/prod are three isolated Postgres schemas that all get the same
+// migrations run against them (see docs/ENVIRONMENTS.md), so they share one
+// shape. The Supabase client picks the live one via `db.schema` in
+// lib/supabase.ts; supabase-js requires each real schema name to be its own
+// top-level key here, not a single generic "public" placeholder.
+interface FdcSchema {
     Tables: {
       clinics: {
         Row: { id: string; name: string }
@@ -313,8 +317,9 @@ export interface Database {
       period_month: { Args: { ts: string }; Returns: string }
       period_quarter: { Args: { ts: string }; Returns: string }
       is_provisioned: { Args: Record<string, never>; Returns: boolean }
-      current_profile: { Args: Record<string, never>; Returns: Database['public']['Tables']['profiles']['Row'] }
+      current_profile: { Args: Record<string, never>; Returns: FdcSchema['Tables']['profiles']['Row'] }
       can_access_clinic: { Args: { p_clinic_id: string }; Returns: boolean }
+      provision_self: { Args: Record<string, never>; Returns: void }
       relink_allowed_users: { Args: Record<string, never>; Returns: void }
       create_session: {
         Args: { p_clinic_id: string; p_audit_type: AuditType; p_room_ids: string[] }
@@ -376,6 +381,11 @@ export interface Database {
         }[]
       }
     }
-    Enums: Record<string, never>
-  }
+  Enums: Record<string, never>
+}
+
+export interface Database {
+  dev: FdcSchema
+  staging: FdcSchema
+  prod: FdcSchema
 }

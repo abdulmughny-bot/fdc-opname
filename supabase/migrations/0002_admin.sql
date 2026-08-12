@@ -10,17 +10,20 @@ alter table profiles      add column if not exists active boolean not null defau
 
 -- 2) provisioning must respect the active flag: a deactivated email must not
 --    get (or keep) a working profile, even if its auth.users row still exists.
-create or replace function handle_new_user()
-returns trigger as $$
-declare v_allowed allowed_users;
+-- Overrides provision_self() from 0001_schema.sql — schema-scoped, called by
+-- the client right after sign-in (see the note in 0001_schema.sql).
+create or replace function provision_self()
+returns void as $$
+declare v_allowed allowed_users; v_email text;
 begin
-  select * into v_allowed from allowed_users where lower(email) = lower(new.email) and active = true;
+  v_email := (select email from auth.users where id = auth.uid());
+  if v_email is null then raise exception 'Not authenticated.'; end if;
+  select * into v_allowed from allowed_users where lower(email) = lower(v_email) and active = true;
   if v_allowed.email is not null then
-    insert into public.profiles (id, email, name, role, all_clinics, active)
-    values (new.id, new.email, v_allowed.name, v_allowed.role, v_allowed.all_clinics, true)
+    insert into profiles (id, email, name, role, all_clinics, active)
+    values (auth.uid(), v_email, v_allowed.name, v_allowed.role, v_allowed.all_clinics, true)
     on conflict (id) do update set active = true, role = excluded.role, all_clinics = excluded.all_clinics;
   end if;
-  return new;
 end;
 $$ language plpgsql security definer;
 
@@ -28,6 +31,24 @@ $$ language plpgsql security definer;
 create or replace function is_provisioned() returns boolean as $$
   select exists (select 1 from profiles where id = auth.uid() and active = true);
 $$ language sql stable security definer;
+
+-- relink_allowed_users() (0001_schema.sql) had no role check at all, and
+-- ignored the active flag entirely — either gap would let it re-provision a
+-- profile for someone who was deactivated. Bring it in line with the other
+-- admin_* functions: Lead-only, active allow-list rows only.
+create or replace function relink_allowed_users()
+returns void as $$
+declare v_me profiles;
+begin
+  v_me := current_profile();
+  if v_me is null or v_me.role <> 'Lead' then raise exception 'Only Leads can relink users.'; end if;
+  insert into profiles (id, email, name, role, all_clinics, active)
+  select u.id, u.email, a.name, a.role, a.all_clinics, true
+  from auth.users u join allowed_users a on lower(a.email) = lower(u.email)
+  where a.active = true
+  on conflict (id) do nothing;
+end;
+$$ language plpgsql security definer;
 
 -- convenience: is the current user a Lead?
 create or replace function is_lead() returns boolean as $$
