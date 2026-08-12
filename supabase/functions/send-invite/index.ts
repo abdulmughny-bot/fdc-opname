@@ -1,13 +1,11 @@
-// supabase/functions/send-report/index.ts
+// supabase/functions/send-invite/index.ts
 //
-// Deploy with: supabase functions deploy send-report
-// Requires secrets set first:
-//   supabase secrets set RESEND_API_KEY=your_resend_key
-//   supabase secrets set RESEND_FROM_EMAIL="Stock Opname <reports@yourdomain.com>"
+// Sends a "you've been added" email when a Lead adds a brand-new person on
+// the People & Access admin tab. Same shape/secrets as send-report — holds
+// the Resend key server-side, never exposed to the browser.
 //
-// The PDF is generated client-side (browser jsPDF) and sent here as base64 —
-// this function's only job is to hold the Resend API key server-side (never
-// expose that key to the browser) and log the send.
+// Deploy with: supabase functions deploy send-invite
+// (Uses the same RESEND_API_KEY / RESEND_FROM_EMAIL secrets as send-report.)
 
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -24,10 +22,8 @@ serve(async (req) => {
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) throw new Error("Missing Authorization header.");
 
-    const { sessionId, clinicName, recipients, pdfBase64, schema } = await req.json();
-    if (!sessionId || !clinicName || !recipients?.length || !pdfBase64 || !schema) {
-      throw new Error("Missing sessionId, clinicName, recipients, pdfBase64, or schema.");
-    }
+    const { email, name, siteUrl, schema } = await req.json();
+    if (!email || !name || !siteUrl || !schema) throw new Error("Missing email, name, siteUrl, or schema.");
 
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL")!,
@@ -39,7 +35,8 @@ serve(async (req) => {
     if (userErr || !user) throw new Error("Not authenticated.");
 
     const { data: profile } = await supabase.from("profiles").select("*").eq("id", user.id).single();
-    if (!profile) throw new Error("Your account is not provisioned for Stock Opname.");
+    if (!profile) throw new Error("Your account is not provisioned.");
+    if (profile.role !== "Lead") throw new Error("Only Leads can send invites.");
 
     const resendResp = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -49,12 +46,13 @@ serve(async (req) => {
       },
       body: JSON.stringify({
         from: Deno.env.get("RESEND_FROM_EMAIL") ?? "Stock Opname <onboarding@resend.dev>",
-        to: recipients,
-        subject: `Stock Opname Report — ${clinicName}`,
-        html: `<p>Attached is the stock opname report for <b>${clinicName}</b>.</p><p>Sent via Stock Opname Control by ${profile.name}.</p>`,
-        attachments: [
-          { filename: `Opname_${clinicName.replace(/\s+/g, "_")}.pdf`, content: pdfBase64 },
-        ],
+        to: [email],
+        subject: "You've been added to FDC Stock Opname",
+        html:
+          `<p>Hi ${name},</p>` +
+          `<p>You've been added to <b>FDC Stock Opname</b> by ${profile.name}.</p>` +
+          `<p>Sign in with your FDC Google account (@fdcdentalclinic.co.id) at:</p>` +
+          `<p><a href="${siteUrl}">${siteUrl}</a></p>`,
       }),
     });
 
@@ -62,18 +60,6 @@ serve(async (req) => {
       const errText = await resendResp.text();
       throw new Error("Resend rejected the email: " + errText);
     }
-
-    // Log the send using the USER's own auth context, so RLS applies as normal.
-    const { error: insertErr } = await supabase
-      .from("reports_sent")
-      .insert({ session_id: sessionId, sent_by: profile.name, recipients });
-    if (insertErr) throw insertErr;
-
-    await supabase.from("audit_trail").insert({
-      user_email: profile.email,
-      action: "Sent report",
-      detail: `${sessionId} to ${recipients.join(", ")}`,
-    });
 
     return new Response(JSON.stringify({ success: true }), {
       status: 200,

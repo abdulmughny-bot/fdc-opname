@@ -4,6 +4,9 @@ import { supabase } from '../../lib/supabase'
 import { Banner } from '../wizard/shared'
 import { useAllClinics } from './useAllClinics'
 
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const LABEL_OPTIONS = ['HOC', 'PIC', 'Regional'] as const
+
 interface RecipientRow {
   id: string
   clinic_id: string
@@ -17,7 +20,7 @@ export function ClinicRecipients() {
   const [loading, setLoading] = useState(true)
   const [clinicId, setClinicId] = useState('')
   const [email, setEmail] = useState('')
-  const [label, setLabel] = useState('')
+  const [label, setLabel] = useState<string>(LABEL_OPTIONS[0])
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -44,12 +47,16 @@ export function ClinicRecipients() {
       setError('Enter an email.')
       return
     }
+    if (!EMAIL_RE.test(email.trim())) {
+      setError('That doesn’t look like a valid email address.')
+      return
+    }
     setBusy(true)
     setError(null)
     try {
-      await adminAddRecipient(clinicId, email.trim(), label.trim() || null)
+      await adminAddRecipient(clinicId, email.trim(), label)
       setEmail('')
-      setLabel('')
+      setLabel(LABEL_OPTIONS[0])
       await reload()
     } catch (err) {
       setError((err as Error).message)
@@ -140,13 +147,17 @@ export function ClinicRecipients() {
         </div>
         <div>
           <label className="block text-xs font-semibold text-ink-soft mb-1">Label</label>
-          <input
-            type="text"
+          <select
             value={label}
             onChange={(e) => setLabel(e.target.value)}
-            placeholder="HOC / PIC"
             className="w-full rounded-md border border-line px-2.5 py-2 text-sm"
-          />
+          >
+            {LABEL_OPTIONS.map((l) => (
+              <option key={l} value={l}>
+                {l}
+              </option>
+            ))}
+          </select>
         </div>
         <button
           type="button"

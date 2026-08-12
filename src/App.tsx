@@ -1,5 +1,5 @@
-import { BrowserRouter, Navigate, Route, Routes, useNavigate, useParams } from 'react-router-dom'
-import { AuthProvider, LoginScreen, useAuth } from './features/auth'
+import { BrowserRouter, Navigate, Route, Routes, useLocation, useNavigate, useParams } from 'react-router-dom'
+import { AuthProvider, LoginScreen, useAuth, type Profile } from './features/auth'
 import { Dashboard } from './features/dashboard'
 import { Wizard } from './features/wizard'
 import { AdminPage } from './features/admin'
@@ -28,6 +28,43 @@ function WizardRoute() {
   return <Wizard key={sessionId} sessionId={sessionId === 'new' ? null : (sessionId ?? null)} onExit={() => navigate('/')} />
 }
 
+// A single profile-circle menu replaces the separate Admin button + Sign out
+// link — its first item flips between "Admin" and "Dashboard" depending on
+// where you currently are, so it's always "go to the other place".
+function ProfileMenu({ profile, onSignOut }: { profile: Profile; onSignOut: () => void }) {
+  const location = useLocation()
+  const navigate = useNavigate()
+  const onAdminPage = location.pathname.startsWith('/admin')
+
+  return (
+    <details className="relative">
+      <summary className="list-none cursor-pointer flex items-center gap-2.5 select-none">
+        <div className="text-right">
+          <div className="font-semibold text-ink text-sm">{profile.name}</div>
+          <div className="font-mono text-[10px] uppercase text-ink-soft">{profile.role}</div>
+        </div>
+        <div className="w-7 h-7 rounded-full bg-teal-deep text-white flex items-center justify-center font-display font-bold text-xs">
+          {initials(profile.name)}
+        </div>
+      </summary>
+      <div className="absolute right-0 mt-2 bg-paper border border-line rounded-md shadow-lg py-1 min-w-[160px] z-20">
+        {profile.role === 'Lead' && (
+          <button
+            type="button"
+            onClick={() => navigate(onAdminPage ? '/' : '/admin')}
+            className="w-full text-left px-3 py-2 text-sm hover:bg-bg"
+          >
+            {onAdminPage ? 'Dashboard' : 'Admin'}
+          </button>
+        )}
+        <button type="button" onClick={onSignOut} className="w-full text-left px-3 py-2 text-sm text-rust hover:bg-bg">
+          Sign out
+        </button>
+      </div>
+    </details>
+  )
+}
+
 function AppShell() {
   const { status, profile, signOut } = useAuth()
   const navigate = useNavigate()
@@ -44,31 +81,7 @@ function AppShell() {
             </span>
             <h1 className="font-display text-xl font-bold text-ink">Stock Opname Control</h1>
           </button>
-          <div className="flex items-center gap-2 text-sm">
-            {profile.role === 'Lead' && (
-              <button
-                type="button"
-                onClick={() => navigate('/admin')}
-                className="rounded-lg border border-line px-3 py-1.5 text-xs font-semibold text-ink hover:border-ink-soft mr-1"
-              >
-                Admin
-              </button>
-            )}
-            <div className="text-right">
-              <div className="font-semibold text-ink">{profile.name}</div>
-              <div className="font-mono text-[10px] uppercase text-ink-soft">{profile.role}</div>
-            </div>
-            <div className="w-7 h-7 rounded-full bg-teal-deep text-white flex items-center justify-center font-display font-bold text-xs">
-              {initials(profile.name)}
-            </div>
-            <button
-              type="button"
-              onClick={signOut}
-              className="ml-1.5 text-teal-deep underline text-xs bg-transparent border-none cursor-pointer"
-            >
-              Sign out
-            </button>
-          </div>
+          <ProfileMenu profile={profile} onSignOut={signOut} />
         </header>
 
         <Routes>

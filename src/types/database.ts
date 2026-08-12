@@ -381,6 +381,7 @@ interface FdcSchema {
     is_lead: { Args: Record<string, never>; Returns: boolean }
     admin_upsert_user: {
       Args: {
+        p_old_email: string | null
         p_email: string
         p_name: string
         p_role: Role

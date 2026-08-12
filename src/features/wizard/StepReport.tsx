@@ -103,6 +103,7 @@ export function StepReport({
           clinicName: data.session.clinic_name,
           recipients,
           pdfBase64,
+          schema: import.meta.env.VITE_DB_SCHEMA,
         }),
       })
       const result = await resp.json()

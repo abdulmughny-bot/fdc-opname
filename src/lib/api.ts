@@ -98,6 +98,7 @@ export const softDeleteStation = (sessionId: string, roomId: string) =>
 // ---- admin (Lead-only, enforced server-side) ----
 
 export const adminUpsertUser = (
+  oldEmail: string | null,
   email: string,
   name: string,
   role: Role,
@@ -105,6 +106,7 @@ export const adminUpsertUser = (
   clinicIds: string[] | null
 ) =>
   call<void>('admin_upsert_user', {
+    p_old_email: oldEmail,
     p_email: email,
     p_name: name,
     p_role: role,

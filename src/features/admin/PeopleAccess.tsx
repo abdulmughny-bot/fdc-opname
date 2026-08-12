@@ -1,14 +1,53 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ReactNode } from 'react'
+import { supabase } from '../../lib/supabase'
 import { adminDeactivateUser, adminListUsers, adminReactivateUser, adminUpsertUser, type AdminUserRow } from '../../lib/api'
 import { useAuth } from '../auth'
 import { Banner } from '../wizard/shared'
 import { useAllClinics } from './useAllClinics'
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+const INVITE_FUNCTION_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-invite`
 
 function scopeText(p: AdminUserRow) {
   if (p.all_clinics) return 'All clinics'
   return p.clinic_ids.length ? `${p.clinic_ids.length} clinic(s)` : '—'
+}
+
+// Full-viewport backdrop sits above the page content, so nothing behind it
+// is clickable — and there's deliberately no onClick here, so clicking the
+// backdrop does nothing. Only Cancel, the × button, or Save close this.
+function Modal({ onClose, children }: { onClose: () => void; children: ReactNode }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-ink/30 backdrop-blur-sm" />
+      <div className="relative bg-paper border border-line rounded-[10px] shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close"
+          className="absolute top-3 right-3 w-7 h-7 flex items-center justify-center rounded-full text-ink-soft hover:text-ink hover:bg-bg text-lg leading-none"
+        >
+          ×
+        </button>
+        <div className="p-6">{children}</div>
+      </div>
+    </div>
+  )
+}
+
+async function sendInviteEmail(email: string, name: string) {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
+  if (!session) return
+  await fetch(INVITE_FUNCTION_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + session.access_token },
+    body: JSON.stringify({ email, name, siteUrl: window.location.origin, schema: import.meta.env.VITE_DB_SCHEMA }),
+  }).catch(() => {
+    // Invite email failing shouldn't undo the person having been added —
+    // surfaced separately in the editor rather than blocking the save.
+  })
 }
 
 function PersonEditor({
@@ -30,6 +69,7 @@ function PersonEditor({
   const [clinicIds, setClinicIds] = useState<string[]>(editing ? person.clinic_ids : [])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [inviteWarning, setInviteWarning] = useState<string | null>(null)
 
   function toggleClinic(id: string) {
     setClinicIds((prev) => (prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id]))
@@ -37,6 +77,7 @@ function PersonEditor({
 
   async function save() {
     setError(null)
+    setInviteWarning(null)
     if (!name.trim() || !email.trim()) {
       setError('Name and email are required.')
       return
@@ -49,13 +90,21 @@ function PersonEditor({
       setError('Pick at least one clinic, or enable All clinics.')
       return
     }
-    if (editing && email.trim().toLowerCase() === profile?.email.toLowerCase() && role !== 'Lead') {
+    const selfCheckEmail = editing ? person.email : email.trim()
+    if (selfCheckEmail.toLowerCase() === profile?.email.toLowerCase() && role !== 'Lead') {
       setError('You cannot remove your own Lead role.')
       return
     }
     setSaving(true)
     try {
-      await adminUpsertUser(email.trim(), name.trim(), role, allClinics, clinicIds)
+      await adminUpsertUser(editing ? person.email : null, email.trim(), name.trim(), role, allClinics, clinicIds)
+      if (!editing) {
+        try {
+          await sendInviteEmail(email.trim(), name.trim())
+        } catch {
+          setInviteWarning('Person added, but the invite email could not be sent.')
+        }
+      }
       onSaved()
     } catch (err) {
       setError((err as Error).message)
@@ -65,9 +114,10 @@ function PersonEditor({
   }
 
   return (
-    <div className="bg-paper border border-line rounded-[10px] p-6 mt-4">
+    <Modal onClose={onCancel}>
       <h2 className="font-display text-base font-bold mb-3">{editing ? 'Edit access' : 'Add person'}</h2>
       {error && <Banner kind="error">{error}</Banner>}
+      {inviteWarning && <Banner kind="warn">{inviteWarning}</Banner>}
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className="block text-xs font-semibold text-ink-soft mb-1">Name</label>
@@ -83,9 +133,8 @@ function PersonEditor({
           <input
             type="email"
             value={email}
-            disabled={editing}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full rounded-md border border-line px-2.5 py-2 text-sm disabled:bg-[#F6F6F3] disabled:text-ink-soft"
+            className="w-full rounded-md border border-line px-2.5 py-2 text-sm"
           />
         </div>
       </div>
@@ -142,7 +191,56 @@ function PersonEditor({
           {saving ? 'Saving…' : editing ? 'Save changes' : 'Add person'}
         </button>
       </div>
-    </div>
+    </Modal>
+  )
+}
+
+function StatusControl({
+  person,
+  isSelf,
+  busy,
+  confirming,
+  onRequestConfirm,
+  onCancelConfirm,
+  onConfirm,
+}: {
+  person: AdminUserRow
+  isSelf: boolean
+  busy: boolean
+  confirming: boolean
+  onRequestConfirm: () => void
+  onCancelConfirm: () => void
+  onConfirm: () => void
+}) {
+  if (confirming) {
+    return (
+      <span className="inline-flex items-center gap-2 text-xs">
+        <span className="text-ink-soft">{person.active ? 'Deactivate?' : 'Reactivate?'}</span>
+        <button type="button" disabled={busy} onClick={onConfirm} className="text-rust font-semibold hover:underline disabled:opacity-50">
+          {busy ? 'Working…' : 'Yes'}
+        </button>
+        <button type="button" onClick={onCancelConfirm} className="text-ink-soft hover:underline">
+          Cancel
+        </button>
+      </span>
+    )
+  }
+  const disabled = isSelf && person.active
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      title={disabled ? "You can't deactivate your own account." : undefined}
+      onClick={onRequestConfirm}
+      className={
+        'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold transition-opacity ' +
+        (person.active ? 'bg-teal-wash text-teal-deep' : 'bg-[#EFEFEA] text-ink-soft') +
+        (disabled ? ' cursor-default' : ' cursor-pointer hover:opacity-80')
+      }
+    >
+      <span className={'w-1.5 h-1.5 rounded-full ' + (person.active ? 'bg-teal' : 'bg-[#9AA39C]')} />
+      {person.active ? 'Active' : 'Inactive'}
+    </button>
   )
 }
 
@@ -152,6 +250,7 @@ export function PeopleAccess() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [editorFor, setEditorFor] = useState<AdminUserRow | 'new' | null>(null)
+  const [confirmingEmail, setConfirmingEmail] = useState<string | null>(null)
   const [busyEmail, setBusyEmail] = useState<string | null>(null)
 
   async function reload() {
@@ -172,24 +271,13 @@ export function PeopleAccess() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  async function handleDeactivate(email: string) {
-    setBusyEmail(email)
+  async function handleToggleStatus(p: AdminUserRow) {
+    setBusyEmail(p.email)
     setError(null)
     try {
-      await adminDeactivateUser(email)
-      await reload()
-    } catch (err) {
-      setError((err as Error).message)
-    } finally {
-      setBusyEmail(null)
-    }
-  }
-
-  async function handleReactivate(email: string) {
-    setBusyEmail(email)
-    setError(null)
-    try {
-      await adminReactivateUser(email)
+      if (p.active) await adminDeactivateUser(p.email)
+      else await adminReactivateUser(p.email)
+      setConfirmingEmail(null)
       await reload()
     } catch (err) {
       setError((err as Error).message)
@@ -244,46 +332,20 @@ export function PeopleAccess() {
                   <td className="py-2">{p.role}</td>
                   <td className="py-2">{scopeText(p)}</td>
                   <td className="py-2">
-                    {p.active ? (
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold bg-teal-wash text-teal-deep">
-                        <span className="w-1.5 h-1.5 rounded-full bg-teal" />
-                        Active
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold bg-[#EFEFEA] text-ink-soft">
-                        <span className="w-1.5 h-1.5 rounded-full bg-[#9AA39C]" />
-                        Inactive
-                      </span>
-                    )}
+                    <StatusControl
+                      person={p}
+                      isSelf={isSelf}
+                      busy={busyEmail === p.email}
+                      confirming={confirmingEmail === p.email}
+                      onRequestConfirm={() => setConfirmingEmail(p.email)}
+                      onCancelConfirm={() => setConfirmingEmail(null)}
+                      onConfirm={() => handleToggleStatus(p)}
+                    />
                   </td>
                   <td className="py-2 text-right whitespace-nowrap">
-                    <button
-                      type="button"
-                      onClick={() => setEditorFor(p)}
-                      className="text-xs text-ink-soft hover:text-ink hover:underline mr-3"
-                    >
+                    <button type="button" onClick={() => setEditorFor(p)} className="text-xs text-ink-soft hover:text-ink hover:underline">
                       Edit
                     </button>
-                    {p.active ? (
-                      <button
-                        type="button"
-                        disabled={isSelf || busyEmail === p.email}
-                        title={isSelf ? "You can't deactivate your own account." : undefined}
-                        onClick={() => handleDeactivate(p.email)}
-                        className="text-xs text-rust hover:underline disabled:opacity-40 disabled:no-underline disabled:cursor-not-allowed"
-                      >
-                        {busyEmail === p.email ? 'Working…' : 'Deactivate'}
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        disabled={busyEmail === p.email}
-                        onClick={() => handleReactivate(p.email)}
-                        className="text-xs text-teal-deep hover:underline disabled:opacity-40"
-                      >
-                        {busyEmail === p.email ? 'Working…' : 'Reactivate'}
-                      </button>
-                    )}
                   </td>
                 </tr>
               )

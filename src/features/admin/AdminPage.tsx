@@ -1,4 +1,4 @@
-import { NavLink, Navigate, Route, Routes } from 'react-router-dom'
+import { NavLink, Navigate, Route, Routes, useNavigate } from 'react-router-dom'
 import { PeopleAccess } from './PeopleAccess'
 import { ClinicRecipients } from './ClinicRecipients'
 import { EmailTemplate } from './EmailTemplate'
@@ -12,8 +12,16 @@ const TABS = [
 ]
 
 export function AdminPage() {
+  const navigate = useNavigate()
   return (
     <div>
+      <button
+        type="button"
+        onClick={() => navigate('/')}
+        className="rounded-lg border border-line px-3 py-1.5 text-xs font-semibold text-ink hover:border-ink-soft mb-4"
+      >
+        ← Dashboard
+      </button>
       <div className="flex items-center gap-5 border-b border-line mb-5">
         {TABS.map((t) => (
           <NavLink
@@ -33,7 +41,7 @@ export function AdminPage() {
         <Route path="people" element={<PeopleAccess />} />
         <Route path="recipients" element={<ClinicRecipients />} />
         <Route path="email" element={<EmailTemplate />} />
-        <Route path="settings" element={<AdminSettings />} />
+        <Route path="settings/*" element={<AdminSettings />} />
         <Route path="*" element={<Navigate to="/admin/people" replace />} />
       </Routes>
     </div>
