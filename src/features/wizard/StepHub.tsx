@@ -1,13 +1,14 @@
 import { useState } from 'react'
 import { addStation, finishSession, softDeleteStation } from '../../lib/api'
 import type { VisibleClinic } from '../auth'
-import { Banner, ProgressBar, StationStatusPill, TrackBadge, ketersesuaianDisplay } from './shared'
+import { Banner, ProgressBar, StationStatusPill, StepHeader, TrackBadge, ketersesuaianDisplay } from './shared'
 import { lineStats, type SessionData } from './types'
 
 export function StepHub({
   sessionId,
   clinic,
   data,
+  onExit,
   onReload,
   onOpenStation,
   onFinished,
@@ -15,6 +16,7 @@ export function StepHub({
   sessionId: string
   clinic: VisibleClinic
   data: SessionData
+  onExit: () => void
   onReload: () => Promise<void>
   onOpenStation: (roomId: string) => void
   onFinished: () => void
@@ -70,6 +72,7 @@ export function StepHub({
 
   return (
     <div className="bg-paper border border-line rounded-[10px] p-6">
+      <StepHeader onBack={onExit} backLabel="← Dashboard" />
       <div className="flex items-start justify-between gap-3 flex-wrap mb-1.5">
         <div>
           <h2 className="font-display text-base font-bold">{session.clinic_name}</h2>

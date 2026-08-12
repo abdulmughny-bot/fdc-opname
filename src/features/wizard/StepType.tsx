@@ -1,6 +1,15 @@
-export function StepType({ onChoose }: { onChoose: (auditType: 'Offline' | 'Self') => void }) {
+import { StepHeader } from './shared'
+
+export function StepType({
+  onChoose,
+  onExit,
+}: {
+  onChoose: (auditType: 'Offline' | 'Self') => void
+  onExit: () => void
+}) {
   return (
     <div className="bg-paper border border-line rounded-[10px] p-6">
+      <StepHeader onBack={onExit} backLabel="← Dashboard" />
       <h2 className="font-display text-base font-bold mb-1.5">What kind of audit is this?</h2>
       <p className="text-[13px] text-ink-soft mb-4">This decides who fills Qty Kartu and Qty Fisik during the visit.</p>
       <div className="grid grid-cols-2 max-[700px]:grid-cols-1 gap-4">

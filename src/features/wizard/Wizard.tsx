@@ -53,7 +53,9 @@ export function Wizard({
     <div>
       <Breadcrumb step={state.step} />
 
-      {state.step === 'type' && <StepType onChoose={(auditType) => setState((s) => ({ ...s, auditType, step: 'clinic' }))} />}
+      {state.step === 'type' && (
+        <StepType onChoose={(auditType) => setState((s) => ({ ...s, auditType, step: 'clinic' }))} onExit={onExit} />
+      )}
 
       {state.step === 'clinic' && state.auditType && (
         <StepClinicStations
@@ -73,6 +75,7 @@ export function Wizard({
             <StepSistem
               sessionId={state.sessionId}
               data={data}
+              onExit={onExit}
               onReload={async () => {
                 await reload()
                 await reloadBarang()
@@ -86,6 +89,7 @@ export function Wizard({
               sessionId={state.sessionId}
               clinic={state.clinic}
               data={data}
+              onExit={onExit}
               onReload={reload}
               onOpenStation={(roomId) => setState((s) => ({ ...s, currentRoomId: roomId, step: 'dentallog' }))}
               onFinished={() => setState((s) => ({ ...s, step: 'report' }))}

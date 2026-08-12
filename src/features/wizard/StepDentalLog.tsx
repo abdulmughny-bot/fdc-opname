@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { reopenDentalLog, saveLineEdit, submitDentalLog, applyUpload } from '../../lib/api'
 import { parseClinicTemplateFile, type ParsedClinicTemplateFile } from './parseUpload'
-import { Banner, BackButton, ProgressBar } from './shared'
+import { Banner, PaginationControls, ProgressBar, StepHeader, paginate } from './shared'
 import { SUBMIT_THRESHOLD, lineStats, type DentalLogLineRow } from './types'
 
 type EditableField = 'qty_kartu' | 'qty_fisik' | 'remarks'
@@ -20,10 +20,12 @@ function ClinicTemplateUpload({
   const [parsed, setParsed] = useState<ParsedClinicTemplateFile | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
+  const [page, setPage] = useState(1)
 
   async function handleFile(file: File) {
     setParsed(null)
     setError(null)
+    setPage(1)
     try {
       setParsed(await parseClinicTemplateFile(file))
     } catch (err) {
@@ -42,6 +44,7 @@ function ClinicTemplateUpload({
       })
     : []
   const changedRows = diff.filter((d) => d.changed)
+  const { pageItems, totalPages, page: clampedPage } = paginate(changedRows, page, 10)
 
   async function confirm() {
     if (!parsed) return
@@ -103,7 +106,7 @@ function ClinicTemplateUpload({
                   </tr>
                 </thead>
                 <tbody>
-                  {changedRows.slice(0, 10).map(({ row, existing }) => (
+                  {pageItems.map(({ row, existing }) => (
                     <tr key={row.sku} className="border-b border-line/50">
                       <td className="py-1.5 font-mono text-xs">{row.sku}</td>
                       <td className="py-1.5 text-right font-mono text-xs">
@@ -116,9 +119,7 @@ function ClinicTemplateUpload({
                   ))}
                 </tbody>
               </table>
-              {changedRows.length > 10 && (
-                <p className="text-xs text-ink-soft mb-3">Showing first 10 of {changedRows.length} changed rows.</p>
-              )}
+              <PaginationControls page={clampedPage} totalPages={totalPages} onPage={setPage} />
             </>
           )}
           <button
@@ -223,20 +224,16 @@ export function StepDentalLog({
 
   return (
     <div className="bg-paper border border-line rounded-[10px] p-6">
-      <div className="flex items-start justify-between gap-3 mb-1.5">
-        <div>
-          <h2 className="font-display text-base font-bold">
-            {clinicName} — {dentalName}
-          </h2>
-          <p className="text-[13px] text-ink-soft">
-            {auditType === 'Offline'
-              ? 'Audit team fills Qty Kartu Stok and Qty Fisik on-site.'
-              : 'Clinic staff fill Qty Kartu Stok and Qty Fisik.'}{' '}
-            Qty Sistem is read-only.
-          </p>
-        </div>
-        <BackButton label="← Stations" onClick={onBack} />
-      </div>
+      <StepHeader onBack={onBack} backLabel="← Stations" />
+      <h2 className="font-display text-base font-bold mb-1.5">
+        {clinicName} — {dentalName}
+      </h2>
+      <p className="text-[13px] text-ink-soft mb-4">
+        {auditType === 'Offline'
+          ? 'Audit team fills Qty Kartu Stok and Qty Fisik on-site.'
+          : 'Clinic staff fill Qty Kartu Stok and Qty Fisik.'}{' '}
+        Qty Sistem is read-only.
+      </p>
 
       {locked && (
         <Banner kind="success">
@@ -329,7 +326,7 @@ export function StepDentalLog({
         </table>
       </div>
 
-      <div className="flex items-center justify-between">
+      <div className="sticky bottom-0 -mx-6 -mb-6 px-6 py-4 bg-paper border-t border-line rounded-b-[10px] flex items-center justify-between gap-3 flex-wrap">
         <span className="text-[13px] text-ink-soft">
           {locked
             ? 'Already submitted.'

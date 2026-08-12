@@ -1,20 +1,20 @@
 import { useRef, useState } from 'react'
 import { applyUpload } from '../../lib/api'
 import { parseSistemFile, type ParsedSistemFile } from './parseUpload'
-import { Banner } from './shared'
-import type { SessionData } from './types'
+import { Banner, PaginationControls, StepHeader, paginate } from './shared'
+import type { DentalLogLineRow, SessionData } from './types'
 
 function StationUploadRow({
   sessionId,
   roomId,
   name,
-  lineCount,
+  lines,
   onUploaded,
 }: {
   sessionId: string
   roomId: string
   name: string
-  lineCount: number
+  lines: DentalLogLineRow[]
   onUploaded: () => void
 }) {
   const fileInput = useRef<HTMLInputElement>(null)
@@ -23,18 +23,32 @@ function StationUploadRow({
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
+  const [page, setPage] = useState(1)
 
   async function handleFile(file: File) {
     setParsed(null)
     setParseError(null)
     setUploadError(null)
     setDone(false)
+    setPage(1)
     try {
       setParsed(await parseSistemFile(file))
     } catch (err) {
       setParseError((err as Error).message)
     }
   }
+
+  // Diff against what's already on file — a re-upload should never be a
+  // silent overwrite, matching how the clinic-template upload already works.
+  const diff = parsed
+    ? parsed.valid.map((v) => {
+        const existing = lines.find((l) => l.barang_sku === v.sku)
+        const changed = !existing || existing.qty_sistem === null || Number(existing.qty_sistem) !== v.qty
+        return { v, existing, changed }
+      })
+    : []
+  const changedRows = diff.filter((d) => d.changed)
+  const { pageItems, totalPages, page: clampedPage } = paginate(changedRows, page, 10)
 
   async function confirm() {
     if (!parsed) return
@@ -57,10 +71,10 @@ function StationUploadRow({
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <div className="font-semibold text-sm">{name}</div>
-          <div className="text-xs text-ink-soft font-mono mt-0.5">{lineCount} SKU(s) currently on file</div>
+          <div className="text-xs text-ink-soft font-mono mt-0.5">{lines.length} SKU(s) currently on file</div>
         </div>
         <label className="rounded-lg border border-line px-3 py-1.5 text-xs font-semibold text-ink hover:border-ink-soft cursor-pointer">
-          {lineCount > 0 ? 'Replace Qty Sistem file' : 'Upload Qty Sistem file'}
+          {lines.length > 0 ? 'Replace Qty Sistem file' : 'Upload Qty Sistem file'}
           <input
             ref={fileInput}
             type="file"
@@ -111,31 +125,41 @@ function StationUploadRow({
               {parsed.rejectedUnparseable.length > 5 ? '…' : ''}.
             </Banner>
           )}
-          <Banner kind="success">Parsed {parsed.valid.length} items ready to import.</Banner>
-          <table className="w-full text-sm mb-2">
-            <thead>
-              <tr className="text-left text-xs text-ink-soft border-b border-line">
-                <th className="py-1.5 font-medium">Kode Barang</th>
-                <th className="py-1.5 font-medium">Nama Item</th>
-                <th className="py-1.5 font-medium text-right">Qty Sistem</th>
-                <th className="py-1.5 font-medium">Unit</th>
-              </tr>
-            </thead>
-            <tbody>
-              {parsed.valid.slice(0, 8).map((v) => (
-                <tr key={v.sku} className="border-b border-line/50">
-                  <td className="py-1.5 font-mono text-xs">{v.sku}</td>
-                  <td className="py-1.5">{v.name}</td>
-                  <td className="py-1.5 text-right font-mono text-xs">{v.qty}</td>
-                  <td className="py-1.5">{v.unit}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <p className="text-xs text-ink-soft mb-3">Showing first 8 of {parsed.valid.length}.</p>
+          {changedRows.length === 0 ? (
+            <Banner kind="warn">No changes — every parsed SKU already matches what's on file.</Banner>
+          ) : (
+            <>
+              <Banner kind="success">
+                {changedRows.length} of {parsed.valid.length} parsed item(s) will change.
+              </Banner>
+              <table className="w-full text-sm mb-2">
+                <thead>
+                  <tr className="text-left text-xs text-ink-soft border-b border-line">
+                    <th className="py-1.5 font-medium">Kode Barang</th>
+                    <th className="py-1.5 font-medium">Nama Item</th>
+                    <th className="py-1.5 font-medium text-right">Qty Sistem (old → new)</th>
+                    <th className="py-1.5 font-medium">Unit</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pageItems.map(({ v, existing }) => (
+                    <tr key={v.sku} className="border-b border-line/50">
+                      <td className="py-1.5 font-mono text-xs">{v.sku}</td>
+                      <td className="py-1.5">{v.name}</td>
+                      <td className="py-1.5 text-right font-mono text-xs">
+                        {existing?.qty_sistem ?? '—'} → {v.qty}
+                      </td>
+                      <td className="py-1.5">{v.unit}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <PaginationControls page={clampedPage} totalPages={totalPages} onPage={setPage} />
+            </>
+          )}
           <button
             type="button"
-            disabled={uploading}
+            disabled={uploading || changedRows.length === 0}
             onClick={confirm}
             className="rounded-lg bg-teal-deep text-white font-semibold text-sm px-[18px] py-2 hover:bg-teal transition-colors disabled:opacity-50"
           >
@@ -150,16 +174,19 @@ function StationUploadRow({
 export function StepSistem({
   sessionId,
   data,
+  onExit,
   onReload,
   onContinue,
 }: {
   sessionId: string
   data: SessionData
+  onExit: () => void
   onReload: () => void
   onContinue: () => void
 }) {
   return (
     <div className="bg-paper border border-line rounded-[10px] p-6">
+      <StepHeader onBack={onExit} backLabel="← Dashboard" />
       <h2 className="font-display text-base font-bold mb-1.5">Qty Sistem</h2>
       <p className="text-[13px] text-ink-soft mb-4">
         Upload the system-quantity export for each station. Stations with an existing count from a previous audit
@@ -167,14 +194,7 @@ export function StepSistem({
       </p>
 
       {data.dentals.map((d) => (
-        <StationUploadRow
-          key={d.roomId}
-          sessionId={sessionId}
-          roomId={d.roomId}
-          name={d.name}
-          lineCount={d.lines.length}
-          onUploaded={onReload}
-        />
+        <StationUploadRow key={d.roomId} sessionId={sessionId} roomId={d.roomId} name={d.name} lines={d.lines} onUploaded={onReload} />
       ))}
 
       <div className="flex justify-end mt-4">

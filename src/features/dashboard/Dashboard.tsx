@@ -17,7 +17,7 @@ export function Dashboard({
   onSelectSession: (item: SessionWithStations) => void
 }) {
   const { visibleClinics } = useAuth()
-  const { sessions, loading, error } = useDashboardData()
+  const { sessions, loading, error, reload } = useDashboardData()
   const [filters, setFilters] = useState(defaultFilters())
 
   const agents = useMemo(() => {
@@ -116,7 +116,7 @@ export function Dashboard({
           <div className="bg-paper border border-line rounded-[10px] p-[22px_24px] mt-[18px]">
             <h2 className="font-display text-base font-bold mb-1.5">Audit sessions</h2>
             <p className="text-[13px] text-ink-soft mb-4">Active sessions can be resumed. Finished sessions show the report.</p>
-            <SessionsList items={filtered} onSelect={onSelectSession} />
+            <SessionsList items={filtered} onSelect={onSelectSession} onDeleted={reload} />
           </div>
         </>
       )}

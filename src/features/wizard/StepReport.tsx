@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { jsPDF } from 'jspdf'
 import { supabase } from '../../lib/supabase'
-import { Banner, BackButton } from './shared'
+import { Banner, StepHeader } from './shared'
 import { lineStats, type SessionData } from './types'
 
 const EDGE_FUNCTION_URL = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-report`
@@ -117,6 +117,7 @@ export function StepReport({
 
   return (
     <div className="bg-paper border border-line rounded-[10px] p-6">
+      <StepHeader onBack={onBackToDashboard} backLabel="← Dashboard" />
       <h2 className="font-display text-base font-bold mb-1.5">Audit report — {data.session.clinic_name}</h2>
       <p className="text-[13px] text-ink-soft mb-4">
         {data.session.audit_type} audit · finished{' '}
@@ -206,8 +207,7 @@ export function StepReport({
         />
       </div>
 
-      <div className="flex items-center justify-between">
-        <BackButton label="← Back to dashboard" onClick={onBackToDashboard} />
+      <div className="flex items-center justify-end">
         <button
           type="button"
           disabled={sending || sent}

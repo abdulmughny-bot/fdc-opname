@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import type { VisibleClinic } from '../auth'
-import { Banner, BackButton, TrackBadge } from './shared'
+import { Banner, StepHeader, TrackBadge } from './shared'
 
 export function StepClinicStations({
   clinics,
@@ -29,6 +29,7 @@ export function StepClinicStations({
 
   return (
     <div className="bg-paper border border-line rounded-[10px] p-6">
+      <StepHeader onBack={onBack} />
       <h2 className="font-display text-base font-bold mb-1.5">Select the clinic and stations</h2>
       <p className="text-[13px] text-ink-soft mb-4">
         Choose which dental stations to audit this session. One upload = one station.
@@ -67,8 +68,7 @@ export function StepClinicStations({
         </>
       )}
 
-      <div className="flex items-center justify-between mt-5">
-        <BackButton onClick={onBack} />
+      <div className="flex items-center justify-end mt-5">
         <div className="flex items-center gap-3">
           <TrackBadge auditType={auditType} />
           <button
