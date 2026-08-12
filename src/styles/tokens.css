@@ -1,0 +1,21 @@
+:root {
+  --bg: #F6F6F3;
+  --paper: #FFFFFF;
+  --ink: #1B231F;
+  --ink-soft: #5B655F;
+  --line: #DDDFD8;
+
+  --teal: #1F6F64;
+  --teal-deep: #134D45;
+  --teal-wash: #E4F0EC;
+
+  --rust: #B3401F;
+  --rust-wash: #FBE9E2;
+
+  --amber: #B8862E;
+  --amber-wash: #FBF1DE;
+
+  --font-display: 'Space Grotesk', sans-serif;
+  --font-body: 'IBM Plex Sans', sans-serif;
+  --font-mono: 'IBM Plex Mono', monospace;
+}
