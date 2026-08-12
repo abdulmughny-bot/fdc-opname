@@ -128,6 +128,9 @@ export const adminRemoveRecipient = (clinicId: string, email: string) =>
 export const adminSaveEmailTemplate = (subject: string, body: string) =>
   call<void>('admin_save_email_template', { p_subject: subject, p_body: body })
 
+export const adminSaveSettings = (submitThreshold: number) =>
+  call<void>('admin_save_settings', { p_submit_threshold: submitThreshold })
+
 export interface AdminUserRow {
   email: string
   name: string

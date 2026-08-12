@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { BrowserRouter, Navigate, Route, Routes, useNavigate, useParams } from 'react-router-dom'
 import { AuthProvider, LoginScreen, useAuth } from './features/auth'
-import { Dashboard, type SessionWithStations } from './features/dashboard'
+import { Dashboard } from './features/dashboard'
 import { Wizard } from './features/wizard'
+import { AdminPage } from './features/admin'
 
 function initials(name: string) {
   return name
@@ -11,23 +12,25 @@ function initials(name: string) {
     .join('')
 }
 
-type View = { name: 'dashboard' } | { name: 'wizard'; session: SessionWithStations | null } | { name: 'admin' }
-
-function AdminPlaceholder({ onBack }: { onBack: () => void }) {
+function DashboardRoute() {
+  const navigate = useNavigate()
   return (
-    <div className="bg-paper border border-line rounded-[10px] p-6">
-      <button type="button" onClick={onBack} className="text-xs text-ink-soft hover:text-ink mb-4">
-        ← Dashboard
-      </button>
-      <h2 className="font-display text-base font-bold mb-1.5">Admin</h2>
-      <p className="text-sm text-ink-soft">People &amp; Access, Clinic Recipients, and Email Template are coming next.</p>
-    </div>
+    <Dashboard
+      onNewAuditLog={() => navigate('/wizard/new')}
+      onSelectSession={(sessionId) => navigate(`/wizard/${sessionId}`)}
+    />
   )
+}
+
+function WizardRoute() {
+  const { sessionId } = useParams()
+  const navigate = useNavigate()
+  return <Wizard key={sessionId} sessionId={sessionId === 'new' ? null : (sessionId ?? null)} onExit={() => navigate('/')} />
 }
 
 function AppShell() {
   const { status, profile, signOut } = useAuth()
-  const [view, setView] = useState<View>({ name: 'dashboard' })
+  const navigate = useNavigate()
 
   if (status !== 'ready' || !profile) return <LoginScreen />
 
@@ -35,7 +38,7 @@ function AppShell() {
     <div className="min-h-screen bg-bg">
       <div className="max-w-[1180px] mx-auto px-5 pb-20">
         <header className="flex items-center justify-between py-5 border-b border-line mb-6 flex-wrap gap-3">
-          <button type="button" onClick={() => setView({ name: 'dashboard' })} className="flex flex-col gap-0.5 text-left">
+          <button type="button" onClick={() => navigate('/')} className="flex flex-col gap-0.5 text-left">
             <span className="font-mono text-[11px] tracking-[0.14em] uppercase text-ink-soft">
               FDC Dental Clinic · Central Warehouse Audit
             </span>
@@ -45,7 +48,7 @@ function AppShell() {
             {profile.role === 'Lead' && (
               <button
                 type="button"
-                onClick={() => setView({ name: 'admin' })}
+                onClick={() => navigate('/admin')}
                 className="rounded-lg border border-line px-3 py-1.5 text-xs font-semibold text-ink hover:border-ink-soft mr-1"
               >
                 Admin
@@ -68,20 +71,12 @@ function AppShell() {
           </div>
         </header>
 
-        {view.name === 'dashboard' && (
-          <Dashboard
-            onNewAuditLog={() => setView({ name: 'wizard', session: null })}
-            onSelectSession={(session) => setView({ name: 'wizard', session })}
-          />
-        )}
-        {view.name === 'wizard' && (
-          <Wizard
-            key={view.session?.session.id ?? 'new'}
-            initialSession={view.session}
-            onExit={() => setView({ name: 'dashboard' })}
-          />
-        )}
-        {view.name === 'admin' && <AdminPlaceholder onBack={() => setView({ name: 'dashboard' })} />}
+        <Routes>
+          <Route path="/" element={<DashboardRoute />} />
+          <Route path="/wizard/:sessionId" element={<WizardRoute />} />
+          <Route path="/admin/*" element={profile.role === 'Lead' ? <AdminPage /> : <Navigate to="/" replace />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
       </div>
     </div>
   )
@@ -89,9 +84,11 @@ function AppShell() {
 
 function App() {
   return (
-    <AuthProvider>
-      <AppShell />
-    </AuthProvider>
+    <BrowserRouter>
+      <AuthProvider>
+        <AppShell />
+      </AuthProvider>
+    </BrowserRouter>
   )
 }
 

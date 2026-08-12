@@ -56,7 +56,7 @@ export function SessionsList({
   onDeleted,
 }: {
   items: SessionWithStations[]
-  onSelect: (item: SessionWithStations) => void
+  onSelect: (sessionId: string) => void
   onDeleted: () => void
 }) {
   const [confirmingId, setConfirmingId] = useState<string | null>(null)
@@ -97,7 +97,7 @@ export function SessionsList({
             key={session.id}
             className="w-full border border-line rounded-[9px] px-4 py-3.5 mb-2.5 bg-paper flex items-center justify-between gap-3 hover:border-teal transition-colors"
           >
-            <button type="button" onClick={() => onSelect({ session, stations, derivedStatus })} className="text-left flex-1">
+            <button type="button" onClick={() => onSelect(session.id)} className="text-left flex-1">
               <div className="font-semibold text-sm">{session.clinic_name}</div>
               <div className="text-xs text-ink-soft font-mono mt-0.5">
                 {new Date(session.started_at).toLocaleString()} · started by {session.started_by} · {submitted}/

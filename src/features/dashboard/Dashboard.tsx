@@ -7,14 +7,14 @@ import { StatRow } from './StatRow'
 import { Gauge } from './Gauge'
 import { ClinicTable, type ClinicRow } from './ClinicTable'
 import { SessionsList } from './SessionsList'
-import { defaultFilters, type SessionWithStations } from './types'
+import { defaultFilters } from './types'
 
 export function Dashboard({
   onNewAuditLog,
   onSelectSession,
 }: {
   onNewAuditLog: () => void
-  onSelectSession: (item: SessionWithStations) => void
+  onSelectSession: (sessionId: string) => void
 }) {
   const { visibleClinics } = useAuth()
   const { sessions, loading, error, reload } = useDashboardData()

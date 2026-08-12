@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import { reopenDentalLog, saveLineEdit, submitDentalLog, applyUpload } from '../../lib/api'
+import { useAppSettings } from '../../lib/useAppSettings'
 import { parseClinicTemplateFile, type ParsedClinicTemplateFile } from './parseUpload'
 import { Banner, PaginationControls, ProgressBar, StepHeader, paginate } from './shared'
-import { SUBMIT_THRESHOLD, lineStats, type DentalLogLineRow } from './types'
+import { lineStats, type DentalLogLineRow } from './types'
 
 type EditableField = 'qty_kartu' | 'qty_fisik' | 'remarks'
 
@@ -175,7 +176,8 @@ export function StepDentalLog({
   useEffect(() => setLocalLines(lines), [lines])
 
   const stats = lineStats(localLines)
-  const canSubmit = stats.pct >= SUBMIT_THRESHOLD
+  const { submitThreshold } = useAppSettings()
+  const canSubmit = stats.pct >= submitThreshold
 
   function updateField(sku: string, field: EditableField, value: string) {
     setLocalLines((prev) =>
@@ -332,7 +334,7 @@ export function StepDentalLog({
             ? 'Already submitted.'
             : canSubmit
               ? 'Threshold reached — you can submit this station.'
-              : `Fill at least ${SUBMIT_THRESHOLD}% of items to submit (currently ${stats.pct}%).`}
+              : `Fill at least ${submitThreshold}% of items to submit (currently ${stats.pct}%).`}
         </span>
         <button
           type="button"

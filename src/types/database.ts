@@ -106,6 +106,12 @@ interface FdcSchema {
       }>
       Relationships: []
     }
+    app_settings: {
+      Row: { id: number; submit_threshold: number; updated_by: string | null; updated_at: string | null }
+      Insert: Partial<{ id: number; submit_threshold: number; updated_by: string | null; updated_at: string | null }>
+      Update: Partial<{ id: number; submit_threshold: number; updated_by: string | null; updated_at: string | null }>
+      Relationships: []
+    }
     sistem_current: {
       Row: {
         clinic_id: string
@@ -389,6 +395,7 @@ interface FdcSchema {
     admin_add_recipient: { Args: { p_clinic_id: string; p_email: string; p_label: string | null }; Returns: void }
     admin_remove_recipient: { Args: { p_clinic_id: string; p_email: string }; Returns: void }
     admin_save_email_template: { Args: { p_subject: string; p_body: string }; Returns: void }
+    admin_save_settings: { Args: { p_submit_threshold: number }; Returns: void }
     admin_list_users: {
       Args: Record<string, never>
       Returns: {

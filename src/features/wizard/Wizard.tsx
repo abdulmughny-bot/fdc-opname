@@ -1,7 +1,6 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createSession } from '../../lib/api'
 import { useAuth, type VisibleClinic } from '../auth'
-import type { SessionWithStations } from '../dashboard'
 import { StepType } from './StepType'
 import { StepClinicStations } from './StepClinicStations'
 import { StepSistem } from './StepSistem'
@@ -17,31 +16,34 @@ function clinicFor(visibleClinics: VisibleClinic[], clinicId: string, fallbackNa
   return visibleClinics.find((c) => c.id === clinicId) ?? { id: clinicId, name: fallbackName, dentals: [] }
 }
 
-export function Wizard({
-  initialSession,
-  onExit,
-}: {
-  initialSession: SessionWithStations | null
-  onExit: () => void
-}) {
+// `sessionId` is all that's needed to resume — everything else (audit type,
+// clinic, which step to land on) is derived once the session data loads, so
+// a route like /wizard/:sessionId can drive this directly without the caller
+// having to have a full session object on hand already.
+export function Wizard({ sessionId: resumeSessionId, onExit }: { sessionId: string | null; onExit: () => void }) {
   const { visibleClinics } = useAuth()
   const { nameFor, reload: reloadBarang } = useBarang()
 
-  const [state, setState] = useState(() => {
-    if (initialSession) {
-      const step: WizardStep = initialSession.session.status === 'Finished' ? 'report' : 'hub'
-      return {
-        ...initialWizardState(),
-        step,
-        auditType: initialSession.session.audit_type,
-        clinic: clinicFor(visibleClinics, initialSession.session.clinic_id, initialSession.session.clinic_name),
-        sessionId: initialSession.session.id,
-      }
-    }
-    return initialWizardState()
-  })
+  const [state, setState] = useState(() =>
+    resumeSessionId
+      ? { ...initialWizardState(), sessionId: resumeSessionId, step: 'hub' as WizardStep }
+      : initialWizardState()
+  )
 
   const { data, loading, error, reload } = useSessionData(state.sessionId)
+  const resumeInitialized = useRef(false)
+
+  useEffect(() => {
+    if (data && resumeSessionId && !resumeInitialized.current) {
+      resumeInitialized.current = true
+      setState((s) => ({
+        ...s,
+        step: data.session.status === 'Finished' ? 'report' : 'hub',
+        auditType: data.session.audit_type,
+        clinic: clinicFor(visibleClinics, data.session.clinic_id, data.session.clinic_name),
+      }))
+    }
+  }, [data, resumeSessionId, visibleClinics])
 
   async function handleCreateSession(clinic: VisibleClinic, roomIds: string[]) {
     if (!state.auditType) return
