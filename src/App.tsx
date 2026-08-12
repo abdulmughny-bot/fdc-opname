@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { AuthProvider, LoginScreen, useAuth } from './features/auth'
 import { Dashboard, type SessionWithStations } from './features/dashboard'
+import { Wizard } from './features/wizard'
 
 function initials(name: string) {
   return name
@@ -11,20 +12,6 @@ function initials(name: string) {
 }
 
 type View = { name: 'dashboard' } | { name: 'wizard'; session: SessionWithStations | null } | { name: 'admin' }
-
-function WizardPlaceholder({ session, onBack }: { session: SessionWithStations | null; onBack: () => void }) {
-  return (
-    <div className="bg-paper border border-line rounded-[10px] p-6">
-      <button type="button" onClick={onBack} className="text-xs text-ink-soft hover:text-ink mb-4">
-        ← Dashboard
-      </button>
-      <h2 className="font-display text-base font-bold mb-1.5">
-        {session ? `${session.session.clinic_name} — audit wizard` : 'New audit log'}
-      </h2>
-      <p className="text-sm text-ink-soft">The audit wizard (station upload, line log, report) is coming in the next step.</p>
-    </div>
-  )
-}
 
 function AdminPlaceholder({ onBack }: { onBack: () => void }) {
   return (
@@ -87,7 +74,13 @@ function AppShell() {
             onSelectSession={(session) => setView({ name: 'wizard', session })}
           />
         )}
-        {view.name === 'wizard' && <WizardPlaceholder session={view.session} onBack={() => setView({ name: 'dashboard' })} />}
+        {view.name === 'wizard' && (
+          <Wizard
+            key={view.session?.session.id ?? 'new'}
+            initialSession={view.session}
+            onExit={() => setView({ name: 'dashboard' })}
+          />
+        )}
         {view.name === 'admin' && <AdminPlaceholder onBack={() => setView({ name: 'dashboard' })} />}
       </div>
     </div>

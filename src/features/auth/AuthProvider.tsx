@@ -155,7 +155,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function signInWithGoogle() {
     setState((s) => ({ ...s, status: 'loading', errorMessage: null }))
-    const cleanUrl = window.location.origin + window.location.pathname
+    // origin alone (no pathname) — this SPA has no client-side routing, and
+    // Supabase's Redirect URLs allow-list entries are stored without a
+    // trailing slash, so appending pathname (always '/') caused every
+    // redirect_to to silently mismatch and fall back to the Site URL instead.
+    const cleanUrl = window.location.origin
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: { redirectTo: cleanUrl, queryParams: { hd: GOOGLE_HOSTED_DOMAIN, prompt: 'select_account' } },
