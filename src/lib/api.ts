@@ -3,13 +3,16 @@
 // UI layers decide how to present the message (e.g. inline error / toast).
 
 import { supabase } from './supabase'
-import type { AuditType, Role, UploadKind } from '../types/database'
+import type { AuditType, Database, Role, UploadKind } from '../types/database'
 
-// `fn` is a dynamic string here (each exported wrapper below pins the real
-// literal name + args pairing), which is one level too dynamic for
-// supabase-js's overload inference — hence the narrow `any` at the call site.
-async function call<T>(fn: string, args?: Record<string, unknown>): Promise<T> {
-  const { data, error } = await (supabase.rpc as any)(fn, args ?? {})
+type RpcName = keyof Database['dev']['Functions']
+
+// `fn` stays fully checked against RpcName (catches typos/renames at every
+// call site below). `args` can't be correlated to the right shape per-fn
+// through a generic wrapper — TS has no way to narrow "args matches whichever
+// literal fn is" — so it's cast at just this one internal line.
+async function call<T>(fn: RpcName, args?: Record<string, unknown>): Promise<T> {
+  const { data, error } = await supabase.rpc(fn, (args ?? {}) as never)
   if (error) throw new Error(error.message)
   return data as T
 }

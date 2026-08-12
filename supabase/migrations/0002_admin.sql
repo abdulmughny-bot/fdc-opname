@@ -69,6 +69,9 @@ begin
   v_me := current_profile();
   if v_me is null or v_me.role <> 'Lead' then raise exception 'Only Leads can manage access.'; end if;
   if p_role not in ('Lead','Team') then raise exception 'Role must be Lead or Team.'; end if;
+  if lower(p_email) = lower(v_me.email) and p_role <> 'Lead' then
+    raise exception 'You cannot remove your own Lead role.';
+  end if;
 
   insert into allowed_users (email, name, role, all_clinics, active)
   values (lower(p_email), p_name, p_role, p_all_clinics, true)
