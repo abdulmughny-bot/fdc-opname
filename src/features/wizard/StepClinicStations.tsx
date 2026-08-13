@@ -31,9 +31,6 @@ export function StepClinicStations({
     setRoomIds((prev) => (prev.includes(id) ? prev.filter((r) => r !== id) : [...prev, id]))
   }
 
-  // Awaits onContinue so a server-side block (e.g. this station already has an
-  // unfinished audit of the same type) surfaces here instead of vanishing as
-  // an unhandled rejection.
   async function handleContinue() {
     if (!clinic) return
     setSubmitting(true)
@@ -47,60 +44,77 @@ export function StepClinicStations({
   }
 
   return (
-    <div className="bg-paper border border-line rounded-[10px] p-6">
+    <div className="bg-paper border border-line rounded-lg p-6 space-y-6">
       <StepHeader onBack={onBack} />
-      <h2 className="font-display text-base font-bold mb-1.5">Select the clinic and stations</h2>
-      <p className="text-[13px] text-ink-soft mb-4">
-        Choose which dental stations to audit this session. One upload = one station.
-      </p>
+
+      <div>
+        <h2 className="font-display text-2xl font-bold text-ink mb-2">Select clinic & stations</h2>
+        <p className="text-sm text-ink-soft">Choose which dental stations to audit in this session. You can audit one or multiple stations.</p>
+      </div>
 
       {clinics.length === 0 ? (
         <Banner kind="warn">You don't have access to any clinics. Ask a Lead to grant you clinic access.</Banner>
       ) : (
         <>
-          <label className="block text-xs font-semibold text-ink-soft mb-1">Clinic</label>
-          <select
-            value={clinicId}
-            onChange={(e) => selectClinic(e.target.value)}
-            className="w-full rounded-md border border-line px-2.5 py-2 text-sm mb-4"
-          >
-            {clinics.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-
-          <label className="block text-xs font-semibold text-ink-soft mb-1.5">Dental stations</label>
-          {clinic && clinic.dentals.length === 0 ? (
-            <Banner kind="warn">This clinic has no dental stations registered.</Banner>
-          ) : (
-            <div className="border border-line rounded-md p-2.5 mb-4 max-h-56 overflow-auto">
-              {clinic?.dentals.map((d) => (
-                <label key={d.id} className="flex items-center gap-2 text-sm py-1.5 px-1 cursor-pointer">
-                  <input type="checkbox" checked={roomIds.includes(d.id)} onChange={() => toggleRoom(d.id)} />
-                  {d.name}
-                </label>
+          {/* Clinic Selection */}
+          <div>
+            <label className="block text-sm font-semibold text-ink mb-2">Clinic</label>
+            <select
+              value={clinicId}
+              onChange={(e) => selectClinic(e.target.value)}
+              className="w-full rounded-lg border border-line px-3 py-2.5 text-sm bg-paper-secondary focus:outline-none focus:border-teal-deep transition-colors"
+            >
+              {clinics.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
               ))}
-            </div>
-          )}
+            </select>
+          </div>
+
+          {/* Station Selection */}
+          <div>
+            <label className="block text-sm font-semibold text-ink mb-2">Dental Stations</label>
+            {clinic && clinic.dentals.length === 0 ? (
+              <Banner kind="warn">This clinic has no dental stations registered.</Banner>
+            ) : (
+              <div className="border border-line rounded-lg p-4 bg-paper-secondary max-h-64 overflow-y-auto space-y-2">
+                {clinic?.dentals.map((d) => (
+                  <label
+                    key={d.id}
+                    className="flex items-center gap-3 p-3 rounded-md hover:bg-line-soft cursor-pointer transition-colors"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={roomIds.includes(d.id)}
+                      onChange={() => toggleRoom(d.id)}
+                      className="w-4 h-4 rounded border-line cursor-pointer"
+                    />
+                    <span className="text-sm font-medium text-ink flex-1">{d.name}</span>
+                    <span className="text-xs text-ink-lighter bg-line-soft px-2 py-1 rounded">Station</span>
+                  </label>
+                ))}
+              </div>
+            )}
+            <p className="text-xs text-ink-soft mt-2">
+              {roomIds.length} station{roomIds.length !== 1 ? 's' : ''} selected
+            </p>
+          </div>
         </>
       )}
 
       {error && <Banner kind="error">{error}</Banner>}
 
-      <div className="flex items-center justify-end mt-5">
-        <div className="flex items-center gap-3">
-          <TrackBadge auditType={auditType} />
-          <button
-            type="button"
-            disabled={!clinic || roomIds.length === 0 || submitting}
-            onClick={handleContinue}
-            className="rounded-lg bg-teal-deep text-white font-semibold text-sm px-[18px] py-2.5 hover:bg-teal transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            {submitting ? 'Starting…' : 'Continue'}
-          </button>
-        </div>
+      <div className="flex items-center justify-between pt-4 border-t border-line">
+        <TrackBadge auditType={auditType} />
+        <button
+          type="button"
+          disabled={!clinic || roomIds.length === 0 || submitting}
+          onClick={handleContinue}
+          className="rounded-lg bg-teal-deep text-white font-semibold text-sm px-6 py-2.5 hover:bg-teal transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          {submitting ? 'Starting…' : 'Continue to upload'}
+        </button>
       </div>
     </div>
   )

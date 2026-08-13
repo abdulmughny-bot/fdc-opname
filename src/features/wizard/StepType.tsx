@@ -1,4 +1,5 @@
 import { StepHeader } from './shared'
+import { Card } from '../../components'
 
 export function StepType({
   onChoose,
@@ -8,34 +9,48 @@ export function StepType({
   onExit: () => void
 }) {
   return (
-    <div className="bg-paper border border-line rounded-[10px] p-6">
+    <Card>
       <StepHeader onBack={onExit} backLabel="← Dashboard" />
-      <h2 className="font-display text-base font-bold mb-1.5">What kind of audit is this?</h2>
-      <p className="text-[13px] text-ink-soft mb-4">This decides who fills Qty Kartu and Qty Fisik during the visit.</p>
+      <div className="mb-6">
+        <h2 className="font-display text-2xl font-bold text-ink mb-2">Choose audit type</h2>
+        <p className="text-sm text-ink-soft">Select how this audit will be conducted. This determines who fills inventory counts during the visit.</p>
+      </div>
+
       <div className="grid grid-cols-2 max-[700px]:grid-cols-1 gap-4">
         <button
           type="button"
           onClick={() => onChoose('Offline')}
-          className="text-left border-[1.5px] border-line rounded-[10px] p-4 hover:border-teal transition-colors"
+          className="text-left bg-paper-secondary border-2 border-line rounded-lg p-5 hover:border-teal-deep hover:bg-teal-wash hover:shadow-md transition-all group"
         >
-          <span className="font-mono text-[10.5px] tracking-wider uppercase text-teal-deep">Offline audit</span>
-          <h3 className="font-display text-base font-bold mt-1.5 mb-1">Central / internal audit</h3>
-          <p className="text-[13px] text-ink-soft">
-            Audit team visits the clinic and fills Qty Kartu Stok and Qty Fisik themselves during the visit.
+          <div className="flex items-start justify-between mb-3">
+            <span className="font-mono text-[10px] tracking-wider uppercase font-semibold text-teal-deep bg-teal-wash px-2 py-1 rounded">
+              Offline
+            </span>
+            <span className="text-2xl group-hover:scale-110 transition-transform">🏢</span>
+          </div>
+          <h3 className="font-display text-lg font-bold text-ink mb-2">Central Audit</h3>
+          <p className="text-sm text-ink-soft leading-relaxed">
+            Audit team visits the clinic and fills all inventory counts (Qty Kartu & Qty Fisik) during the on-site visit.
           </p>
         </button>
+
         <button
           type="button"
           onClick={() => onChoose('Self')}
-          className="text-left border-[1.5px] border-line rounded-[10px] p-4 hover:border-teal transition-colors"
+          className="text-left bg-paper-secondary border-2 border-line rounded-lg p-5 hover:border-rust-deep hover:bg-rust-wash hover:shadow-md transition-all group"
         >
-          <span className="font-mono text-[10.5px] tracking-wider uppercase text-teal-deep">Self audit</span>
-          <h3 className="font-display text-base font-bold mt-1.5 mb-1">Clinic self-opname</h3>
-          <p className="text-[13px] text-ink-soft">
-            Clinic staff fill Qty Kartu Stok and Qty Fisik using the template. Qty Sistem is still supplied by audit.
+          <div className="flex items-start justify-between mb-3">
+            <span className="font-mono text-[10px] tracking-wider uppercase font-semibold text-rust bg-rust-wash px-2 py-1 rounded">
+              Self
+            </span>
+            <span className="text-2xl group-hover:scale-110 transition-transform">🏥</span>
+          </div>
+          <h3 className="font-display text-lg font-bold text-ink mb-2">Clinic Self-Opname</h3>
+          <p className="text-sm text-ink-soft leading-relaxed">
+            Clinic staff complete the inventory template themselves. Audit team reviews and uploads system quantities.
           </p>
         </button>
       </div>
-    </div>
+    </Card>
   )
 }
