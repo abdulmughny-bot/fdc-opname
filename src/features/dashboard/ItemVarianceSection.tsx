@@ -95,7 +95,9 @@ export function ItemVarianceSection({ periodDays = 30, clinicIds }: ItemVariance
 
                 <div className="space-y-2">
                   {items.map((item) => {
-                    const isShortage = item.variance_qty < 0
+                    // Invert variance sign: API returns positive when Sistem > Fisik, but should be negative (shortage)
+                    const invertedVariance = -(item.variance_qty || 0)
+                    const isShortage = invertedVariance < 0
                     const varianceClass = isShortage ? 'text-rust' : 'text-ink-soft'
                     const bgClass = isShortage ? 'bg-rust-wash/40' : 'bg-line/20'
                     const badgeVariant = isShortage ? 'error' : 'warning'
@@ -124,8 +126,8 @@ export function ItemVarianceSection({ periodDays = 30, clinicIds }: ItemVariance
                           {/* Variance amount and % */}
                           <div className="text-right shrink-0">
                             <p className={`font-mono font-bold text-lg ${varianceClass}`}>
-                              {item.variance_qty < 0 ? '−' : '+'}
-                              {Math.abs(item.variance_qty)}
+                              {invertedVariance < 0 ? '−' : '+'}
+                              {Math.abs(invertedVariance)}
                             </p>
                             <p className={`text-xs font-semibold ${varianceClass}`}>
                               {item.variance_pct}%
@@ -149,8 +151,8 @@ export function ItemVarianceSection({ periodDays = 30, clinicIds }: ItemVariance
                           </div>
                           <div>
                             <p className="text-ink-soft font-medium mb-1">Loss Value</p>
-                            <p className={`font-mono font-semibold ${isShortage ? 'text-rust' : 'text-ink-soft'}`}>
-                              {isShortage
+                            <p className={`font-mono font-semibold ${invertedVariance < 0 ? 'text-rust' : 'text-ink-soft'}`}>
+                              {invertedVariance < 0
                                 ? `Rp ${Math.abs(item.variance_value_rp || 0).toLocaleString()}`
                                 : '—'}
                             </p>
