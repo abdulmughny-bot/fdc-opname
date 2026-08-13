@@ -1,11 +1,11 @@
 import { NavLink, Navigate, Route, Routes } from 'react-router-dom'
 import { ThresholdSettings } from './settings/ThresholdSettings'
-import { ItemTypeSettings } from './settings/ItemTypeSettings'
 import { RoleSettings } from './settings/RoleSettings'
+import { ItemsManagement } from './ItemsManagement'
 
 const SECTIONS = [
+  { path: 'item-master', label: '📦 Item Master' },
   { path: 'threshold', label: 'Acceptance threshold' },
-  { path: 'item-types', label: 'Item types for upload' },
   { path: 'roles', label: 'Role settings' },
 ]
 
@@ -30,11 +30,11 @@ export function AdminSettings() {
         </nav>
         <div className="border-l border-line pl-6">
           <Routes>
-            <Route index element={<Navigate to="/admin/settings/threshold" replace />} />
+            <Route index element={<Navigate to="/admin/settings/item-master" replace />} />
+            <Route path="item-master" element={<ItemsManagement />} />
             <Route path="threshold" element={<ThresholdSettings />} />
-            <Route path="item-types" element={<ItemTypeSettings />} />
             <Route path="roles" element={<RoleSettings />} />
-            <Route path="*" element={<Navigate to="/admin/settings/threshold" replace />} />
+            <Route path="*" element={<Navigate to="/admin/settings/item-master" replace />} />
           </Routes>
         </div>
       </div>
