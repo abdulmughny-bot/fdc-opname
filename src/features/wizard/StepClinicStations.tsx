@@ -11,20 +11,39 @@ export function StepClinicStations({
   clinics: VisibleClinic[]
   auditType: 'Offline' | 'Self'
   onBack: () => void
-  onContinue: (clinic: VisibleClinic, roomIds: string[]) => void
+  onContinue: (clinic: VisibleClinic, roomIds: string[]) => void | Promise<void>
 }) {
   const [clinicId, setClinicId] = useState(clinics[0]?.id ?? '')
   const clinic = clinics.find((c) => c.id === clinicId) ?? null
   const [roomIds, setRoomIds] = useState<string[]>(clinic?.dentals.map((d) => d.id) ?? [])
+  const [error, setError] = useState<string | null>(null)
+  const [submitting, setSubmitting] = useState(false)
 
   function selectClinic(id: string) {
     setClinicId(id)
+    setError(null)
     const next = clinics.find((c) => c.id === id)
     setRoomIds(next?.dentals.map((d) => d.id) ?? [])
   }
 
   function toggleRoom(id: string) {
+    setError(null)
     setRoomIds((prev) => (prev.includes(id) ? prev.filter((r) => r !== id) : [...prev, id]))
+  }
+
+  // Awaits onContinue so a server-side block (e.g. this station already has an
+  // unfinished audit of the same type) surfaces here instead of vanishing as
+  // an unhandled rejection.
+  async function handleContinue() {
+    if (!clinic) return
+    setSubmitting(true)
+    setError(null)
+    try {
+      await onContinue(clinic, roomIds)
+    } catch (err) {
+      setError((err as Error).message)
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -68,16 +87,18 @@ export function StepClinicStations({
         </>
       )}
 
+      {error && <Banner kind="error">{error}</Banner>}
+
       <div className="flex items-center justify-end mt-5">
         <div className="flex items-center gap-3">
           <TrackBadge auditType={auditType} />
           <button
             type="button"
-            disabled={!clinic || roomIds.length === 0}
-            onClick={() => clinic && onContinue(clinic, roomIds)}
+            disabled={!clinic || roomIds.length === 0 || submitting}
+            onClick={handleContinue}
             className="rounded-lg bg-teal-deep text-white font-semibold text-sm px-[18px] py-2.5 hover:bg-teal transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            Continue
+            {submitting ? 'Starting…' : 'Continue'}
           </button>
         </div>
       </div>
