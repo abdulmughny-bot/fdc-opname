@@ -250,7 +250,7 @@ export function Dashboard({
             {/* Item Variance Analysis */}
             <ItemVarianceSection
               periodDays={30}
-              clinicIds={filters.clinicIds === 'all' ? 'all' : filters.clinicIds}
+              filters={filters}
             />
           </div>
 

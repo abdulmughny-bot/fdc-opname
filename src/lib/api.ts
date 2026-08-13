@@ -325,10 +325,21 @@ export const updateItemPricing = (
 export const getClinicRankings = (periodType: 'month' | 'quarter' | 'year' = 'month') =>
   call<ClinicRanking[]>('get_clinic_rankings', { p_period_type: periodType })
 
-export const getItemVarianceAnalysis = (periodDays: number = 30, clinicIds?: string[]) => {
+export const getItemVarianceAnalysis = (
+  periodDays: number = 30,
+  clinicIds?: string[],
+  auditType?: string,
+  agent?: string
+) => {
   const params: Record<string, unknown> = { p_period_days: periodDays }
   if (clinicIds && clinicIds.length > 0) {
     params.p_clinic_ids = clinicIds
+  }
+  if (auditType) {
+    params.p_audit_type = auditType
+  }
+  if (agent) {
+    params.p_agent = agent
   }
   return call<ItemVarianceAnalysis[]>('get_item_variance_analysis', params)
 }

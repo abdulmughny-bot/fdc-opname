@@ -2,25 +2,28 @@ import { useEffect, useState } from 'react'
 import { getItemVarianceAnalysis } from '../../lib/api'
 import { Card, CardHeader, CardTitle, CardBody, Badge } from '../../components'
 import type { ItemVarianceAnalysis } from '../../lib/api'
+import type { DashboardFilters } from './types'
 
 interface ItemVarianceSectionProps {
   periodDays?: number
-  clinicIds?: string[] | 'all'
+  filters?: DashboardFilters
 }
 
-export function ItemVarianceSection({ periodDays = 30, clinicIds }: ItemVarianceSectionProps) {
+export function ItemVarianceSection({ periodDays = 30, filters }: ItemVarianceSectionProps) {
   const [variance, setVariance] = useState<ItemVarianceAnalysis[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     loadVariance()
-  }, [periodDays, clinicIds])
+  }, [periodDays, filters])
 
   async function loadVariance() {
     setLoading(true)
     try {
-      const ids = clinicIds && clinicIds !== 'all' && Array.isArray(clinicIds) ? clinicIds : undefined
-      const data = await getItemVarianceAnalysis(periodDays, ids)
+      const clinicIds = filters && filters.clinicIds !== 'all' && Array.isArray(filters.clinicIds) ? filters.clinicIds : undefined
+      const auditType = filters && filters.auditType !== 'all' ? filters.auditType : undefined
+      const agent = filters && filters.agent !== 'all' ? filters.agent : undefined
+      const data = await getItemVarianceAnalysis(periodDays, clinicIds, auditType, agent)
       // Filter to only items with actual discrepancy (Sistem != Fisik) and sort by absolute variance
       const withDiscrepancy = (data || [])
         .filter((item) => item.variance_qty !== 0)
@@ -37,6 +40,7 @@ export function ItemVarianceSection({ periodDays = 30, clinicIds }: ItemVariance
   if (loading) return <div className="text-center py-8 text-ink-soft">Loading variance data...</div>
 
   const totalVariance = variance.reduce((sum, item) => sum + (item.variance_value_rp || 0), 0)
+  const clinicIds = filters && filters.clinicIds !== 'all' && Array.isArray(filters.clinicIds) ? filters.clinicIds : undefined
   const showClinicGrouping = clinicIds && clinicIds !== 'all' && Array.isArray(clinicIds) && clinicIds.length > 1
 
   // Group items by clinic if multiple clinics selected

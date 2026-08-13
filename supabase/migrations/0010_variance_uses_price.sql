@@ -9,8 +9,10 @@
 -- Ketersesuaian alone — both numbers are still returned/displayed as before.
 
 drop function if exists get_item_variance_analysis(int);
+drop function if exists get_item_variance_analysis(int, text[]);
+drop function if exists get_item_variance_analysis(int, text[], text, text);
 
-create or replace function get_item_variance_analysis(p_period_days int default 30)
+create or replace function get_item_variance_analysis(p_period_days int default 30, p_clinic_ids text[] default null, p_audit_type text default null, p_agent text default null)
 returns table (
   item_id uuid,
   sku text,
@@ -45,6 +47,10 @@ begin
     where dlog.qty_sistem is not null
       and dlog.qty_fisik is not null
       and s.started_at >= now() - make_interval(days := p_period_days)
+      and (p_clinic_ids is null or r.clinic_id = any(p_clinic_ids::uuid[]))
+      and s.status = 'Finished'
+      and (p_audit_type is null or s.audit_type = p_audit_type)
+      and (p_agent is null or s.started_by = p_agent)
   ),
   totals as (
     select
