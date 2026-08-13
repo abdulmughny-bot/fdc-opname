@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react'
-import { applyUpload } from '../../lib/api'
+import { applyUpload, getActiveItemSkus } from '../../lib/api'
 import { parseSistemFile, type ParsedSistemFile } from './parseUpload'
 import { Banner, PaginationControls, StepHeader, paginate } from './shared'
 import type { DentalLogLineRow, SessionData } from './types'
@@ -32,7 +32,8 @@ function StationUploadRow({
     setDone(false)
     setPage(1)
     try {
-      setParsed(await parseSistemFile(file))
+      const knownSkus = await getActiveItemSkus()
+      setParsed(await parseSistemFile(file, knownSkus))
     } catch (err) {
       setParseError((err as Error).message)
     }
@@ -125,6 +126,16 @@ function StationUploadRow({
                 .map((d) => d.sku)
                 .join(', ')}
               {parsed.rejectedUnparseable.length > 5 ? '…' : ''}.
+            </Banner>
+          )}
+          {parsed.rejectedUnknownSku.length > 0 && (
+            <Banner kind="error">
+              {parsed.rejectedUnknownSku.length} item(s) not found in Item Master and skipped:{' '}
+              {parsed.rejectedUnknownSku
+                .slice(0, 5)
+                .map((d) => d.sku)
+                .join(', ')}
+              {parsed.rejectedUnknownSku.length > 5 ? '…' : ''}. Add them in Settings → Item Master first.
             </Banner>
           )}
           {changedRows.length === 0 ? (

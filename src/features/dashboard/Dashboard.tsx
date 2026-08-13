@@ -3,7 +3,6 @@ import { useAuth } from '../auth'
 import { periodMonth, periodQuarter, periodYear } from '../../lib/period'
 import { useDashboardData } from './useDashboardData'
 import { FilterBar } from './FilterBar'
-import { StatRow } from './StatRow'
 import { Gauge } from './Gauge'
 import { ClinicTable, type ClinicRow } from './ClinicTable'
 import { SessionsList } from './SessionsList'
@@ -11,6 +10,66 @@ import { defaultFilters } from './types'
 import { Button, Card, CardHeader, CardTitle, CardBody } from '../../components'
 import { ClinicRankings } from './ClinicRankings'
 import { ItemVarianceSection } from './ItemVarianceSection'
+import type { SessionWithStations } from './types'
+
+// Surfaces the sessions someone is actually likely to click right now
+// (in progress or not yet started), independent of the analytics period
+// filter below — resuming an audit shouldn't depend on which month is selected.
+function QuickAccessSessions({
+  sessions,
+  onSelect,
+  onStartNew,
+}: {
+  sessions: SessionWithStations[]
+  onSelect: (sessionId: string) => void
+  onStartNew: () => void
+}) {
+  const actionable = sessions.filter((s) => s.derivedStatus !== 'Finished').slice(0, 6)
+
+  if (actionable.length === 0) {
+    return (
+      <button
+        type="button"
+        onClick={onStartNew}
+        className="w-full text-left bg-teal-wash border border-teal rounded-[12px] px-5 py-4 hover:shadow-md transition-shadow"
+      >
+        <div className="font-display font-bold text-teal-deep">No audits in progress</div>
+        <div className="text-sm text-teal-deep/80 mt-0.5">✚ Start a new audit</div>
+      </button>
+    )
+  }
+
+  return (
+    <div>
+      <h2 className="font-display text-sm font-bold text-ink-soft mb-2.5">Continue your audits</h2>
+      <div className="grid grid-cols-3 max-[900px]:grid-cols-2 max-[560px]:grid-cols-1 gap-3">
+        {actionable.map(({ session, stations, derivedStatus }) => {
+          const submitted = stations.filter((s) => s.status === 'Submitted').length
+          // Same audit-type colour coding as the TrackBadge pill in SessionsList:
+          // Offline = teal (green), Self = amber (red).
+          const wash = session.audit_type === 'Offline' ? 'bg-teal-wash' : 'bg-amber-wash'
+          return (
+            <button
+              key={session.id}
+              type="button"
+              onClick={() => onSelect(session.id)}
+              className={'text-left rounded-[12px] px-4 py-3.5 hover:shadow-md transition-shadow ' + wash}
+            >
+              <div className="font-semibold text-sm text-ink truncate">{session.clinic_name}</div>
+              <div className="text-xs text-ink-soft font-mono mt-1">
+                {submitted}/{stations.length} dental
+              </div>
+              <div className="flex items-center gap-2 mt-2">
+                <span className="font-mono text-[10px] tracking-wider uppercase text-ink-soft">{session.audit_type}</span>
+                <span className="text-[10px] font-semibold text-ink-soft">· {derivedStatus}</span>
+              </div>
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
 
 export function Dashboard({
   onNewAuditLog,
@@ -58,8 +117,7 @@ export function Dashboard({
   // station's own % — not a pooled matched/scorable ratio. A clinic with one
   // 20-item station and one 200-item station counts them equally, matching
   // how the number reads in the sessions/stations lists.
-  const { companyPct, totalFilled, clinicRows } = useMemo(() => {
-    let totalFilled = 0
+  const { companyPct, clinicRows } = useMemo(() => {
     const companyPcts: number[] = []
     const byClinic = new Map<string, number[]>()
     filtered.forEach(({ session, stations }) => {
@@ -67,7 +125,6 @@ export function Dashboard({
       stations
         .filter((s) => s.status === 'Submitted' && s.ketersesuaian !== null)
         .forEach((s) => {
-          totalFilled += s.scorable_count
           companyPcts.push(s.ketersesuaian as number)
           const entry = byClinic.get(session.clinic_name) ?? []
           entry.push(s.ketersesuaian as number)
@@ -79,7 +136,7 @@ export function Dashboard({
     const clinicRows: ClinicRow[] = Array.from(byClinic.entries())
       .filter(([, pcts]) => pcts.length > 0)
       .map(([name, pcts]) => ({ name, pct: mean(pcts) }))
-    return { companyPct, totalFilled, clinicRows }
+    return { companyPct, clinicRows }
   }, [filtered])
 
   return (
@@ -114,6 +171,9 @@ export function Dashboard({
         </div>
       ) : (
         <>
+          {/* Quick Access */}
+          <QuickAccessSessions sessions={sessions} onSelect={onSelectSession} onStartNew={onNewAuditLog} />
+
           {/* Quick Stats */}
           <div className="grid grid-cols-3 gap-4">
             <Card>
@@ -165,7 +225,7 @@ export function Dashboard({
             <div className="grid grid-cols-2 gap-6 max-[900px]:grid-cols-1">
               <Card>
                 <CardHeader>
-                  <CardTitle>Ketersesuaian — Company-wide</CardTitle>
+                  <CardTitle>Ketersesuaian All Clinic</CardTitle>
                 </CardHeader>
                 <CardBody>
                   <p className="text-xs text-ink-soft mb-4">Across finished sessions in this period, both audit types.</p>
@@ -188,7 +248,10 @@ export function Dashboard({
             <ClinicRankings periodType={filters.periodType === 'month' ? 'month' : filters.periodType === 'quarter' ? 'quarter' : 'year'} />
 
             {/* Item Variance Analysis */}
-            <ItemVarianceSection periodDays={30} />
+            <ItemVarianceSection
+              periodDays={30}
+              clinicIds={filters.clinicIds === 'all' ? 'all' : filters.clinicIds}
+            />
           </div>
 
           {/* Sessions List */}

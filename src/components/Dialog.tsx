@@ -1,4 +1,4 @@
-import { ReactNode } from 'react'
+import type { ReactNode } from 'react'
 
 interface DialogProps {
   isOpen: boolean
@@ -6,13 +6,14 @@ interface DialogProps {
   title: ReactNode
   children: ReactNode
   actions?: ReactNode
-  size?: 'sm' | 'md' | 'lg'
+  size?: 'sm' | 'md' | 'lg' | 'xl'
 }
 
 const sizeStyles = {
   sm: 'max-w-sm',
   md: 'max-w-md',
   lg: 'max-w-lg',
+  xl: 'max-w-4xl',
 }
 
 export function Dialog({ isOpen, onClose, title, children, actions, size = 'md' }: DialogProps) {

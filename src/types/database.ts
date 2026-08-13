@@ -45,6 +45,7 @@ interface FdcSchema {
         role: Role
         all_clinics: boolean
         active: boolean
+        custom_role_id: string | null
       }
       Insert: {
         id: string
@@ -53,6 +54,7 @@ interface FdcSchema {
         role?: Role
         all_clinics?: boolean
         active?: boolean
+        custom_role_id?: string | null
       }
       Update: Partial<{
         id: string
@@ -61,6 +63,7 @@ interface FdcSchema {
         role: Role
         all_clinics: boolean
         active: boolean
+        custom_role_id: string | null
       }>
       Relationships: []
     }
@@ -351,6 +354,123 @@ interface FdcSchema {
       }>
       Relationships: []
     }
+    item_master: {
+      Row: {
+        id: string
+        sku: string
+        name: string
+        category: string | null
+        unit: string
+        std_qty_per_location: number | null
+        cost_price: number | null
+        notes: string | null
+        status: 'Active' | 'Inactive' | 'Discontinued'
+        created_at: string
+        created_by: string | null
+        updated_at: string
+        updated_by: string | null
+      }
+      Insert: {
+        id?: string
+        sku: string
+        name: string
+        category?: string | null
+        unit?: string
+        std_qty_per_location?: number | null
+        cost_price?: number | null
+        notes?: string | null
+        status?: 'Active' | 'Inactive' | 'Discontinued'
+        created_at?: string
+        created_by?: string | null
+        updated_at?: string
+        updated_by?: string | null
+      }
+      Update: Partial<{
+        id: string
+        sku: string
+        name: string
+        category: string | null
+        unit: string
+        std_qty_per_location: number | null
+        cost_price: number | null
+        notes: string | null
+        status: 'Active' | 'Inactive' | 'Discontinued'
+        created_at: string
+        created_by: string | null
+        updated_at: string
+        updated_by: string | null
+      }>
+      Relationships: []
+    }
+    item_pricing: {
+      Row: {
+        id: string
+        item_id: string
+        clinic_id: string | null
+        cost_price: number | null
+        selling_price: number
+        margin_pct: number | null
+        effective_date: string
+        updated_by: string
+        updated_at: string
+      }
+      Insert: {
+        id?: string
+        item_id: string
+        clinic_id?: string | null
+        cost_price?: number | null
+        selling_price: number
+        margin_pct?: number | null
+        effective_date?: string
+        updated_by: string
+        updated_at?: string
+      }
+      Update: Partial<{
+        id: string
+        item_id: string
+        clinic_id: string | null
+        cost_price: number | null
+        selling_price: number
+        margin_pct: number | null
+        effective_date: string
+        updated_by: string
+        updated_at: string
+      }>
+      Relationships: []
+    }
+    custom_roles: {
+      Row: {
+        id: string
+        name: string
+        can_view_pricing: boolean
+        can_edit_item_master: boolean
+        can_manage_users: boolean
+        can_access_admin: boolean
+        created_at: string
+        created_by: string | null
+      }
+      Insert: {
+        id?: string
+        name: string
+        can_view_pricing?: boolean
+        can_edit_item_master?: boolean
+        can_manage_users?: boolean
+        can_access_admin?: boolean
+        created_at?: string
+        created_by?: string | null
+      }
+      Update: Partial<{
+        id: string
+        name: string
+        can_view_pricing: boolean
+        can_edit_item_master: boolean
+        can_manage_users: boolean
+        can_access_admin: boolean
+        created_at: string
+        created_by: string | null
+      }>
+      Relationships: []
+    }
   }
   Views: Record<string, never>
   Functions: {
@@ -421,8 +541,88 @@ interface FdcSchema {
         active: boolean
         clinic_ids: string[]
         has_signed_in: boolean
+        custom_role_id: string | null
+        custom_role_name: string | null
       }[]
     }
+    admin_delete_user: { Args: { p_email: string }; Returns: void }
+    // ---- 0009_custom_roles.sql ----
+    can_view_pricing: { Args: Record<string, never>; Returns: boolean }
+    can_edit_item_master: { Args: Record<string, never>; Returns: boolean }
+    can_manage_users: { Args: Record<string, never>; Returns: boolean }
+    can_access_admin: { Args: Record<string, never>; Returns: boolean }
+    admin_list_custom_roles: {
+      Args: Record<string, never>
+      Returns: FdcSchema['Tables']['custom_roles']['Row'][]
+    }
+    admin_upsert_custom_role: {
+      Args: {
+        p_id: string | null
+        p_name: string
+        p_can_view_pricing: boolean
+        p_can_edit_item_master: boolean
+        p_can_manage_users: boolean
+        p_can_access_admin: boolean
+      }
+      Returns: string
+    }
+    admin_delete_custom_role: { Args: { p_id: string }; Returns: void }
+    admin_assign_custom_role: { Args: { p_email: string; p_custom_role_id: string | null }; Returns: void }
+    // ---- 0008_item_master_system.sql / 0010_variance_uses_price.sql ----
+    update_item_pricing: {
+      Args: { p_item_id: string; p_clinic_id: string | null | undefined; p_selling_price: number; p_cost_price: number | undefined }
+      Returns: void
+    }
+    get_clinic_rankings: {
+      Args: { p_period_type: string }
+      Returns: {
+        clinic_id: string
+        clinic_name: string
+        ketersesuaian_pct: number
+        total_stations: number
+        audited_stations: number
+        last_audit_date: string | null
+        variance_value: number | null
+        trend_direction: string
+      }[]
+    }
+    get_item_variance_analysis: {
+      Args: { p_period_days: number }
+      Returns: {
+        item_id: string
+        sku: string
+        item_name: string
+        category: string | null
+        total_sistem_qty: number
+        total_fisik_qty: number
+        variance_qty: number
+        variance_pct: number
+        price_per_unit: number | null
+        variance_value_rp: number | null
+        most_affected_clinic: string
+      }[]
+    }
+    // ---- 0011_manual_line_item.sql ----
+    add_manual_line_item: {
+      Args: { p_session_id: string; p_room_id: string; p_barang_sku: string }
+      Returns: FdcSchema['Tables']['dental_log_lines']['Row']
+    }
+    // ---- 0013_remove_line_item.sql ----
+    remove_line_item: {
+      Args: { p_session_id: string; p_room_id: string; p_barang_sku: string }
+      Returns: void
+    }
+    // ---- 0014_clinic_station_admin.sql ----
+    admin_upsert_clinic: {
+      Args: { p_id: string; p_name: string }
+      Returns: FdcSchema['Tables']['clinics']['Row']
+    }
+    admin_delete_clinic: { Args: { p_id: string }; Returns: void }
+    admin_upsert_room: {
+      Args: { p_id: string | null; p_clinic_id: string; p_name: string }
+      Returns: FdcSchema['Tables']['rooms']['Row']
+    }
+    admin_delete_room: { Args: { p_id: string }; Returns: void }
   }
   Enums: Record<string, never>
 }

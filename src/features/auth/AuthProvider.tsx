@@ -3,7 +3,7 @@ import type { ReactNode } from 'react'
 import { supabase } from '../../lib/supabase'
 import { provisionSelf } from '../../lib/api'
 import { AuthContext, type AuthContextValue } from './context'
-import type { AuthState, Profile, VisibleClinic } from './types'
+import { NO_PERMISSIONS, type AuthState, type Permissions, type Profile, type VisibleClinic } from './types'
 
 const GOOGLE_HOSTED_DOMAIN = 'fdcdentalclinic.co.id'
 const PROFILE_LOAD_MAX_ATTEMPTS = 3
@@ -34,6 +34,23 @@ async function loadProfileWithRetry(userId: string, email: string, attempt = 1):
   return { kind: 'ok', profile: data }
 }
 
+// Leads always have full permissions; Team members get whatever bundle their
+// assigned custom_roles row grants (none, if unassigned).
+async function loadPermissions(profile: Profile): Promise<Permissions> {
+  if (profile.role === 'Lead') {
+    return { canViewPricing: true, canEditItemMaster: true, canManageUsers: true, canAccessAdmin: true }
+  }
+  if (!profile.custom_role_id) return NO_PERMISSIONS
+  const { data, error } = await supabase.from('custom_roles').select('*').eq('id', profile.custom_role_id).maybeSingle()
+  if (error || !data) return NO_PERMISSIONS
+  return {
+    canViewPricing: data.can_view_pricing,
+    canEditItemMaster: data.can_edit_item_master,
+    canManageUsers: data.can_manage_users,
+    canAccessAdmin: data.can_access_admin,
+  }
+}
+
 async function loadVisibleClinics(profile: Profile): Promise<VisibleClinic[]> {
   const [{ data: clinics, error: e1 }, { data: rooms, error: e2 }, { data: access, error: e3 }] = await Promise.all([
     supabase.from('clinics').select('*'),
@@ -59,6 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     errorMessage: null,
     profile: null,
     visibleClinics: [],
+    permissions: NO_PERMISSIONS,
   })
 
   // Guards against the boot/listener race — onAuthStateChange can fire more
@@ -73,7 +91,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     bootInFlight.current = true
     try {
       if (!session) {
-        setState({ status: 'signin', errorMessage: null, profile: null, visibleClinics: [] })
+        setState({ status: 'signin', errorMessage: null, profile: null, visibleClinics: [], permissions: NO_PERMISSIONS })
         return
       }
       const email = session.user.email ?? ''
@@ -88,6 +106,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           errorMessage: 'Could not verify your account right now (network or server). ' + (err as Error).message,
           profile: null,
           visibleClinics: [],
+          permissions: NO_PERMISSIONS,
         })
         return
       }
@@ -95,7 +114,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const res = await loadProfileWithRetry(session.user.id, email)
       if (res.kind === 'unprovisioned') {
         await supabase.auth.signOut()
-        setState({ status: 'error', errorMessage: res.message, profile: null, visibleClinics: [] })
+        setState({ status: 'error', errorMessage: res.message, profile: null, visibleClinics: [], permissions: NO_PERMISSIONS })
         return
       }
       if (res.kind === 'error') {
@@ -105,9 +124,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       try {
-        const visibleClinics = await loadVisibleClinics(res.profile)
+        const [visibleClinics, permissions] = await Promise.all([
+          loadVisibleClinics(res.profile),
+          loadPermissions(res.profile),
+        ])
         appReady.current = true
-        setState({ status: 'ready', errorMessage: null, profile: res.profile, visibleClinics })
+        setState({ status: 'ready', errorMessage: null, profile: res.profile, visibleClinics, permissions })
       } catch (err) {
         setState((s) => ({
           ...s,
@@ -128,13 +150,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_OUT') {
         appReady.current = false
-        setState({ status: 'signin', errorMessage: null, profile: null, visibleClinics: [] })
+        setState({ status: 'signin', errorMessage: null, profile: null, visibleClinics: [], permissions: NO_PERMISSIONS })
         return
       }
       if (session) {
         boot(session)
       } else if (event === 'INITIAL_SESSION') {
-        setState({ status: 'signin', errorMessage: null, profile: null, visibleClinics: [] })
+        setState({ status: 'signin', errorMessage: null, profile: null, visibleClinics: [], permissions: NO_PERMISSIONS })
       }
     })
 

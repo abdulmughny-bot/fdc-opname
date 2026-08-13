@@ -74,6 +74,16 @@ export const applyUpload = (
     p_items: items,
   })
 
+export const addManualLineItem = (sessionId: string, roomId: string, barangSku: string) =>
+  call<Database['dev']['Tables']['dental_log_lines']['Row']>('add_manual_line_item', {
+    p_session_id: sessionId,
+    p_room_id: roomId,
+    p_barang_sku: barangSku,
+  })
+
+export const removeLineItem = (sessionId: string, roomId: string, barangSku: string) =>
+  call<void>('remove_line_item', { p_session_id: sessionId, p_room_id: roomId, p_barang_sku: barangSku })
+
 export const submitDentalLog = (sessionId: string, roomId: string) =>
   call<{ ketersesuaian: number | null; scorable: number; matched: number; total: number }>(
     'submit_dental_log',
@@ -133,6 +143,22 @@ export const adminSaveEmailTemplate = (subject: string, body: string) =>
 export const adminSaveSettings = (submitThreshold: number) =>
   call<void>('admin_save_settings', { p_submit_threshold: submitThreshold })
 
+// ---- clinics & stations ----
+
+export const adminUpsertClinic = (id: string, name: string) =>
+  call<Database['dev']['Tables']['clinics']['Row']>('admin_upsert_clinic', { p_id: id, p_name: name })
+
+export const adminDeleteClinic = (id: string) => call<void>('admin_delete_clinic', { p_id: id })
+
+export const adminUpsertRoom = (id: string | null, clinicId: string, name: string) =>
+  call<Database['dev']['Tables']['rooms']['Row']>('admin_upsert_room', {
+    p_id: id,
+    p_clinic_id: clinicId,
+    p_name: name,
+  })
+
+export const adminDeleteRoom = (id: string) => call<void>('admin_delete_room', { p_id: id })
+
 export interface AdminUserRow {
   email: string
   name: string
@@ -141,11 +167,95 @@ export interface AdminUserRow {
   active: boolean
   clinic_ids: string[]
   has_signed_in: boolean
+  custom_role_id: string | null
+  custom_role_name: string | null
 }
 
 export const adminListUsers = () => call<AdminUserRow[]>('admin_list_users')
 
+export const adminDeleteUser = (email: string) => call<void>('admin_delete_user', { p_email: email })
+
+// ---- custom roles ----
+
+export interface CustomRoleRow {
+  id: string
+  name: string
+  can_view_pricing: boolean
+  can_edit_item_master: boolean
+  can_manage_users: boolean
+  can_access_admin: boolean
+  created_at: string
+  created_by: string | null
+}
+
+export const adminListCustomRoles = () => call<CustomRoleRow[]>('admin_list_custom_roles')
+
+export const adminUpsertCustomRole = (
+  id: string | null,
+  name: string,
+  canViewPricing: boolean,
+  canEditItemMaster: boolean,
+  canManageUsers: boolean,
+  canAccessAdmin: boolean
+) =>
+  call<string>('admin_upsert_custom_role', {
+    p_id: id,
+    p_name: name,
+    p_can_view_pricing: canViewPricing,
+    p_can_edit_item_master: canEditItemMaster,
+    p_can_manage_users: canManageUsers,
+    p_can_access_admin: canAccessAdmin,
+  })
+
+export const adminDeleteCustomRole = (id: string) => call<void>('admin_delete_custom_role', { p_id: id })
+
+export const adminAssignCustomRole = (email: string, customRoleId: string | null) =>
+  call<void>('admin_assign_custom_role', { p_email: email, p_custom_role_id: customRoleId })
+
 // ---- item master system ----
+
+// Every SKU entering the system via an upload must already exist here —
+// Item Master is the validation catalog, not just a pricing reference.
+export const getActiveItemSkus = async (): Promise<Set<string>> => {
+  const { data, error } = await supabase.from('item_master').select('sku').eq('status', 'Active')
+  if (error) throw new Error(error.message)
+  return new Set((data ?? []).map((r) => r.sku))
+}
+
+// Selling price per SKU (global row, clinic_id null), for valuing report
+// discrepancies in Rupiah. Two queries, not a join — no FK embedding is
+// configured between item_master and item_pricing (see types/database.ts).
+export const getPricingForSkus = async (skus: string[]): Promise<Map<string, number>> => {
+  if (skus.length === 0) return new Map()
+  const { data: items, error: e1 } = await supabase.from('item_master').select('id,sku').in('sku', skus)
+  if (e1) throw new Error(e1.message)
+  const idToSku = new Map((items ?? []).map((i) => [i.id, i.sku]))
+  const ids = (items ?? []).map((i) => i.id)
+  if (ids.length === 0) return new Map()
+  const { data: pricing, error: e2 } = await supabase
+    .from('item_pricing')
+    .select('item_id,selling_price')
+    .is('clinic_id', null)
+    .in('item_id', ids)
+  if (e2) throw new Error(e2.message)
+  const map = new Map<string, number>()
+  ;(pricing ?? []).forEach((p) => {
+    const sku = idToSku.get(p.item_id)
+    if (sku) map.set(sku, p.selling_price)
+  })
+  return map
+}
+
+export interface ItemPickerOption {
+  sku: string
+  name: string
+}
+
+export const getActiveItemsForPicker = async (): Promise<ItemPickerOption[]> => {
+  const { data, error } = await supabase.from('item_master').select('sku,name').eq('status', 'Active').order('name')
+  if (error) throw new Error(error.message)
+  return data ?? []
+}
 
 export interface ItemMasterRow {
   id: string
@@ -158,19 +268,6 @@ export interface ItemMasterRow {
   status: 'Active' | 'Inactive' | 'Discontinued'
   created_at: string
   created_by: string | null
-}
-
-export interface ItemApprovalRow {
-  id: string
-  item_id: string
-  status: 'Pending' | 'Approved' | 'Rejected'
-  uploaded_by: string
-  reviewed_by: string | null
-  rejection_reason: string | null
-  admin_notes: string | null
-  created_at: string
-  approved_at: string | null
-  item?: ItemMasterRow
 }
 
 export interface ItemPricingRow {
@@ -205,22 +302,12 @@ export interface ItemVarianceAnalysis {
   total_fisik_qty: number
   variance_qty: number
   variance_pct: number
-  cost_per_unit: number | null
+  price_per_unit: number | null
   variance_value_rp: number | null
   most_affected_clinic: string
 }
 
 // Item Management RPCs
-export const approveItem = (itemApprovalId: string, adminNotes?: string) =>
-  call<void>('approve_item', { p_item_approval_id: itemApprovalId, p_admin_notes: adminNotes })
-
-export const rejectItem = (itemApprovalId: string, rejectionReason: string, adminNotes?: string) =>
-  call<void>('reject_item', {
-    p_item_approval_id: itemApprovalId,
-    p_rejection_reason: rejectionReason,
-    p_admin_notes: adminNotes,
-  })
-
 export const updateItemPricing = (
   itemId: string,
   sellingPrice: number,
@@ -238,5 +325,10 @@ export const updateItemPricing = (
 export const getClinicRankings = (periodType: 'month' | 'quarter' | 'year' = 'month') =>
   call<ClinicRanking[]>('get_clinic_rankings', { p_period_type: periodType })
 
-export const getItemVarianceAnalysis = (periodDays: number = 30) =>
-  call<ItemVarianceAnalysis[]>('get_item_variance_analysis', { p_period_days: periodDays })
+export const getItemVarianceAnalysis = (periodDays: number = 30, clinicIds?: string[]) => {
+  const params: Record<string, unknown> = { p_period_days: periodDays }
+  if (clinicIds && clinicIds.length > 0) {
+    params.p_clinic_ids = clinicIds
+  }
+  return call<ItemVarianceAnalysis[]>('get_item_variance_analysis', params)
+}

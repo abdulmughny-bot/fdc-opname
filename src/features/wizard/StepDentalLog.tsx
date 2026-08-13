@@ -1,6 +1,17 @@
 import { useEffect, useRef, useState } from 'react'
-import { reopenDentalLog, saveLineEdit, submitDentalLog, applyUpload } from '../../lib/api'
+import {
+  reopenDentalLog,
+  saveLineEdit,
+  submitDentalLog,
+  applyUpload,
+  getActiveItemSkus,
+  addManualLineItem,
+  removeLineItem,
+  getActiveItemsForPicker,
+  type ItemPickerOption,
+} from '../../lib/api'
 import { useAppSettings } from '../../lib/useAppSettings'
+import { Button, Dialog } from '../../components'
 import { parseClinicTemplateFile, parseSistemFile, type ParsedClinicTemplateFile, type ParsedSistemFile } from './parseUpload'
 import { Banner, PaginationControls, ProgressBar, StepHeader, paginate } from './shared'
 import { lineStats, type DentalLogLineRow } from './types'
@@ -19,6 +30,18 @@ const ROW_BG: Record<'match' | 'selisih' | 'incomplete', string> = {
   match: 'bg-teal-wash',
   selisih: 'bg-rust-wash',
   incomplete: '',
+}
+
+function TrashIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 6h18" />
+      <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+      <path d="M10 11v6" />
+      <path d="M14 11v6" />
+    </svg>
+  )
 }
 
 function SistemReuploadBody({
@@ -42,7 +65,8 @@ function SistemReuploadBody({
     setError(null)
     setPage(1)
     try {
-      setParsed(await parseSistemFile(file))
+      const knownSkus = await getActiveItemSkus()
+      setParsed(await parseSistemFile(file, knownSkus))
     } catch (err) {
       setError((err as Error).message)
     }
@@ -95,6 +119,12 @@ function SistemReuploadBody({
           {parsed.rejectedDuplicate.length > 0 && (
             <Banner kind="error">
               {parsed.rejectedDuplicate.length} duplicate Kode Barang rejected: {parsed.rejectedDuplicate.map((d) => d.sku).join(', ')}.
+            </Banner>
+          )}
+          {parsed.rejectedUnknownSku.length > 0 && (
+            <Banner kind="error">
+              {parsed.rejectedUnknownSku.length} item(s) not found in Item Master and skipped:{' '}
+              {parsed.rejectedUnknownSku.map((d) => d.sku).join(', ')}.
             </Banner>
           )}
           {changedRows.length === 0 ? (
@@ -158,7 +188,8 @@ function ClinicTemplateUploadBody({
     setError(null)
     setPage(1)
     try {
-      setParsed(await parseClinicTemplateFile(file))
+      const knownSkus = await getActiveItemSkus()
+      setParsed(await parseClinicTemplateFile(file, knownSkus))
     } catch (err) {
       setError((err as Error).message)
     }
@@ -216,6 +247,12 @@ function ClinicTemplateUploadBody({
               {parsed.rejectedDuplicate.length} duplicate Kode Barang rejected: {parsed.rejectedDuplicate.map((d) => d.sku).join(', ')}.
             </Banner>
           )}
+          {parsed.rejectedUnknownSku.length > 0 && (
+            <Banner kind="error">
+              {parsed.rejectedUnknownSku.length} item(s) not found in Item Master and skipped:{' '}
+              {parsed.rejectedUnknownSku.map((d) => d.sku).join(', ')}.
+            </Banner>
+          )}
           {changedRows.length === 0 ? (
             <Banner kind="warn">No changes — every row already matches what's on file.</Banner>
           ) : (
@@ -264,25 +301,29 @@ type UploadKind = 'sistem' | 'clinic'
 
 const UPLOAD_TABS: { key: UploadKind; label: string }[] = [
   { key: 'sistem', label: 'Qty Sistem' },
-  { key: 'clinic', label: 'Clinic Template' },
+  { key: 'clinic', label: 'Qty Kartu Stok / Fisik' },
 ]
 
 // Single entry point for both mid-session upload types. Collapsed by default
 // so it doesn't compete with the log table; a segmented switcher (not two
-// stacked cards) picks which file format is being uploaded.
+// stacked cards) picks which file format is being uploaded. Self-audits are
+// filled in by clinic staff (Kartu/Fisik) so that tab is the default there;
+// Offline audits default to Qty Sistem since the audit team drives that upload.
 function UploadPanel({
   sessionId,
   roomId,
   lines,
+  auditType,
   onUploaded,
 }: {
   sessionId: string
   roomId: string
   lines: DentalLogLineRow[]
+  auditType: 'Offline' | 'Self'
   onUploaded: () => void
 }) {
   const [expanded, setExpanded] = useState(false)
-  const [kind, setKind] = useState<UploadKind>('sistem')
+  const [kind, setKind] = useState<UploadKind>(auditType === 'Self' ? 'clinic' : 'sistem')
 
   return (
     <div className="border border-line rounded-[9px] mb-4 overflow-hidden">
@@ -327,6 +368,152 @@ function UploadPanel({
   )
 }
 
+// Lets a user add a SKU to the log by hand, for items that never came through
+// a file upload — available for both Offline and Self audits. Shows only a
+// button up front; picking an item and the reject/confirm feedback all
+// happen inside the popup so it never competes with the log table's own
+// search bar for attention. The datalist value packs SKU + name together so
+// the browser's native filtering matches on either; the SKU is parsed back
+// out of whichever suggestion gets picked.
+function AddLineItemControl({
+  sessionId,
+  roomId,
+  existingSkus,
+  onAdded,
+}: {
+  sessionId: string
+  roomId: string
+  existingSkus: Set<string>
+  onAdded: (line: DentalLogLineRow) => void
+}) {
+  const [items, setItems] = useState<ItemPickerOption[]>([])
+  const [open, setOpen] = useState(false)
+  const [value, setValue] = useState('')
+  const [selected, setSelected] = useState<ItemPickerOption | null>(null)
+  const [adding, setAdding] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    getActiveItemsForPicker()
+      .then(setItems)
+      .catch(() => setItems([]))
+  }, [])
+
+  const options = items.filter((i) => !existingSkus.has(i.sku))
+  const bySku = new Map(items.map((i) => [i.sku, i]))
+  const allAlreadyAdded = items.length > 0 && options.length === 0
+
+  function openPicker() {
+    setValue('')
+    setSelected(null)
+    setError(null)
+    setOpen(true)
+  }
+
+  function closeDialog() {
+    setOpen(false)
+    setSelected(null)
+    setValue('')
+    setError(null)
+  }
+
+  function handleNext() {
+    setError(null)
+    const sku = value.split(' — ')[0].trim().toUpperCase()
+    if (existingSkus.has(sku)) {
+      setError('This item is already in the log — edit its quantities directly in the table instead.')
+      return
+    }
+    const item = bySku.get(sku)
+    if (!item) {
+      setError('Pick an item from the list.')
+      return
+    }
+    setSelected(item)
+  }
+
+  async function handleConfirmAdd() {
+    if (!selected) return
+    setAdding(true)
+    setError(null)
+    try {
+      const line = await addManualLineItem(sessionId, roomId, selected.sku)
+      onAdded(line)
+      closeDialog()
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setAdding(false)
+    }
+  }
+
+  return (
+    <div className="mb-4">
+      <button
+        type="button"
+        onClick={openPicker}
+        disabled={allAlreadyAdded}
+        title={allAlreadyAdded ? 'Every Item Master item is already in this log.' : undefined}
+        className="rounded-lg border border-line px-3 py-1.5 text-xs font-semibold text-ink hover:border-ink-soft disabled:opacity-50"
+      >
+        + Add item
+      </button>
+
+      <Dialog
+        isOpen={open}
+        onClose={closeDialog}
+        title={selected ? 'Confirm add item' : 'Add item to log'}
+        size="sm"
+        actions={
+          selected ? (
+            <div className="flex gap-2">
+              <Button variant="ghost" onClick={() => setSelected(null)}>
+                Back
+              </Button>
+              <Button variant="primary" onClick={handleConfirmAdd} disabled={adding}>
+                {adding ? 'Adding…' : 'Confirm & add'}
+              </Button>
+            </div>
+          ) : (
+            <div className="flex gap-2">
+              <Button variant="ghost" onClick={closeDialog}>
+                Cancel
+              </Button>
+              <Button variant="primary" onClick={handleNext} disabled={!value.trim()}>
+                Next
+              </Button>
+            </div>
+          )
+        }
+      >
+        {selected ? (
+          <p className="text-sm text-ink">
+            Add <span className="font-semibold">{selected.name}</span>{' '}
+            <span className="font-mono text-xs text-ink-soft">({selected.sku})</span> to this log?
+          </p>
+        ) : (
+          <>
+            <input
+              list="add-line-item-options"
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+              placeholder="Search item by SKU or name…"
+              autoFocus
+              className="w-full border border-line rounded-lg px-2.5 py-1.5 text-sm"
+            />
+            <datalist id="add-line-item-options">
+              {options.map((o) => (
+                <option key={o.sku} value={`${o.sku} — ${o.name}`} />
+              ))}
+            </datalist>
+          </>
+        )}
+        {error && <p className="text-xs text-rust mt-2">{error}</p>}
+      </Dialog>
+    </div>
+  )
+}
+
 export function StepDentalLog({
   sessionId,
   roomId,
@@ -361,6 +548,9 @@ export function StepDentalLog({
   const [feedback, setFeedback] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [reopening, setReopening] = useState(false)
+  const [tableSearch, setTableSearch] = useState('')
+  const [removingSku, setRemovingSku] = useState<string | null>(null)
+  const [removeBusySku, setRemoveBusySku] = useState<string | null>(null)
   const debounceTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
 
   useEffect(() => setLocalLines(lines), [lines])
@@ -372,6 +562,14 @@ export function StepDentalLog({
   // fisik present). Server recomputes the official value on submit; this is the
   // same formula shown live so the number doesn't jump when you submit.
   const liveKeters = stats.scorable ? Math.round((stats.matched / stats.scorable) * 1000) / 10 : null
+
+  // Filters which rows are visible, not what counts toward the stats above —
+  // searching for one item shouldn't make it look like the rest went missing.
+  const visibleLines = localLines.filter((l) => {
+    if (!tableSearch.trim()) return true
+    const q = tableSearch.trim().toLowerCase()
+    return l.barang_sku.toLowerCase().includes(q) || nameFor(l.barang_sku).toLowerCase().includes(q)
+  })
 
   function updateField(sku: string, field: EditableField, value: string) {
     setLocalLines((prev) =>
@@ -390,6 +588,20 @@ export function StepDentalLog({
         setFeedback((err as Error).message)
       }
     }, 400)
+  }
+
+  async function handleRemoveLine(sku: string) {
+    setRemoveBusySku(sku)
+    setFeedback(null)
+    try {
+      await removeLineItem(sessionId, roomId, sku)
+      setLocalLines((prev) => prev.filter((l) => l.barang_sku !== sku))
+      setRemovingSku(null)
+    } catch (err) {
+      setFeedback((err as Error).message)
+    } finally {
+      setRemoveBusySku(null)
+    }
   }
 
   async function handleSubmit() {
@@ -453,26 +665,46 @@ export function StepDentalLog({
       )}
 
       {!locked && (
-        <UploadPanel sessionId={sessionId} roomId={roomId} lines={localLines} onUploaded={onReload} />
+        <>
+          <UploadPanel sessionId={sessionId} roomId={roomId} lines={localLines} auditType={auditType} onUploaded={onReload} />
+          <AddLineItemControl
+            sessionId={sessionId}
+            roomId={roomId}
+            existingSkus={new Set(localLines.map((l) => l.barang_sku))}
+            onAdded={(line) => setLocalLines((prev) => [...prev, line])}
+          />
+        </>
       )}
 
-      <div className="flex justify-between text-xs text-ink-soft mb-1.5">
-        <span>Line items filled</span>
-        <span>
-          {stats.scorable} / {stats.total} ({stats.pct}%)
-        </span>
+      <div className="grid grid-cols-2 gap-3 mb-4">
+        <div className="bg-paper border border-line rounded-lg p-3">
+          <div className="text-xs text-ink-soft font-medium mb-1.5">Items filled</div>
+          <div className="flex items-baseline gap-1.5 mb-2">
+            <span className="text-2xl font-bold text-ink">{stats.scorable}</span>
+            <span className="text-xs text-ink-soft">/ {stats.total} ({stats.pct}%)</span>
+          </div>
+          <ProgressBar pct={stats.pct} />
+        </div>
+        <div className="bg-paper border border-line rounded-lg p-3">
+          <div className="text-xs text-ink-soft font-medium mb-1.5">Ketersesuaian {locked ? '' : '(live)'}</div>
+          <div className="text-2xl font-bold text-ink font-mono">{liveKeters === null ? '—' : `${liveKeters}%`}</div>
+          <div className="text-xs text-ink-soft mt-1">{stats.matched}/{stats.scorable} match</div>
+        </div>
       </div>
+
       <div className="mb-3">
-        <ProgressBar pct={stats.pct} />
-      </div>
-      <div className="flex items-center justify-between text-xs mb-4">
-        <span className="text-ink-soft">Ketersesuaian {locked ? '' : '(live)'}</span>
-        <span className="font-mono font-semibold text-ink">
-          {liveKeters === null ? '—' : `${liveKeters}%`}
-          <span className="text-ink-soft font-normal">
-            {' '}· {stats.matched}/{stats.scorable} match
-          </span>
-        </span>
+        <input
+          type="text"
+          value={tableSearch}
+          onChange={(e) => setTableSearch(e.target.value)}
+          placeholder="Search this log by SKU or item name…"
+          className="w-full border border-line rounded-lg px-3 py-2 text-sm"
+        />
+        {tableSearch.trim() && (
+          <p className="text-xs text-ink-soft mt-1">
+            Showing {visibleLines.length} of {localLines.length} item(s).
+          </p>
+        )}
       </div>
 
       <div className="overflow-x-auto">
@@ -485,10 +717,18 @@ export function StepDentalLog({
               <th className="py-1.5 font-medium text-right">Qty Kartu</th>
               <th className="py-1.5 font-medium text-right">Qty Fisik</th>
               <th className="py-1.5 font-medium">Remarks</th>
+              {!locked && <th className="py-1.5 font-medium text-right">Action</th>}
             </tr>
           </thead>
           <tbody>
-            {localLines.map((l) => {
+            {visibleLines.length === 0 && (
+              <tr>
+                <td colSpan={locked ? 6 : 7} className="py-6 text-center text-sm text-ink-soft">
+                  No items match "{tableSearch}".
+                </td>
+              </tr>
+            )}
+            {visibleLines.map((l) => {
               const tone = rowTone(l)
               const cell =
                 'w-full text-right font-mono text-xs border border-line rounded px-2 py-1 bg-transparent disabled:text-ink-soft'
@@ -539,6 +779,35 @@ export function StepDentalLog({
                       className="w-full text-xs border border-line rounded px-2 py-1 bg-transparent disabled:text-ink-soft"
                     />
                   </td>
+                  {!locked && (
+                    <td className="py-1.5 text-right">
+                      {removingSku === l.barang_sku ? (
+                        <span className="inline-flex items-center gap-1.5 text-xs whitespace-nowrap">
+                          <span className="text-ink-soft">Remove?</span>
+                          <button
+                            type="button"
+                            disabled={removeBusySku === l.barang_sku}
+                            onClick={() => handleRemoveLine(l.barang_sku)}
+                            className="text-rust font-semibold hover:underline disabled:opacity-50"
+                          >
+                            {removeBusySku === l.barang_sku ? 'Removing…' : 'Yes'}
+                          </button>
+                          <button type="button" onClick={() => setRemovingSku(null)} className="text-ink-soft hover:underline">
+                            Cancel
+                          </button>
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setRemovingSku(l.barang_sku)}
+                          title="Remove item from log"
+                          className="text-rust hover:bg-rust-wash rounded-md p-1.5 transition-colors"
+                        >
+                          <TrashIcon />
+                        </button>
+                      )}
+                    </td>
+                  )}
                 </tr>
               )
             })}

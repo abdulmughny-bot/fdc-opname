@@ -24,6 +24,7 @@ export interface ParsedSistemFile {
   flaggedFractional: SistemUploadItem[]
   rejectedDuplicate: { sku: string; name: string }[]
   rejectedUnparseable: { sku: string; satuan: string }[]
+  rejectedUnknownSku: { sku: string; name: string }[]
 }
 
 function findHeaderRow(rows: unknown[][], columnName: string) {
@@ -34,7 +35,7 @@ function findHeaderRow(rows: unknown[][], columnName: string) {
 // first sheet, auto-detects the header row by locating "Kode Barang" (not
 // assumed to be row 0), requires "Satuan Besar", treats "Nama Item" as
 // optional. See docs/ARCHITECTURE.md for the full rule list.
-export async function parseSistemFile(file: File): Promise<ParsedSistemFile> {
+export async function parseSistemFile(file: File, knownSkus?: Set<string>): Promise<ParsedSistemFile> {
   const buf = await file.arrayBuffer()
   const wb = XLSX.read(buf, { type: 'array' })
   const ws = wb.Sheets[wb.SheetNames[0]]
@@ -55,6 +56,7 @@ export async function parseSistemFile(file: File): Promise<ParsedSistemFile> {
   const flaggedFractional: SistemUploadItem[] = []
   const rejectedDuplicate: { sku: string; name: string }[] = []
   const rejectedUnparseable: { sku: string; satuan: string }[] = []
+  const rejectedUnknownSku: { sku: string; name: string }[] = []
 
   for (let i = headerIdx + 1; i < rows.length; i++) {
     const r = rows[i]
@@ -71,6 +73,10 @@ export async function parseSistemFile(file: File): Promise<ParsedSistemFile> {
       continue
     }
     seen.add(sku)
+    if (knownSkus && !knownSkus.has(sku)) {
+      rejectedUnknownSku.push({ sku, name })
+      continue
+    }
     const item: SistemUploadItem = { sku, name, qty: parsed.qty, unit: parsed.unit }
     valid.push(item)
     if (parsed.qty !== Math.floor(parsed.qty)) flaggedFractional.push(item)
@@ -78,7 +84,7 @@ export async function parseSistemFile(file: File): Promise<ParsedSistemFile> {
 
   if (valid.length === 0) throw new Error('No valid item rows found under the header.')
 
-  return { valid, flaggedFractional, rejectedDuplicate, rejectedUnparseable }
+  return { valid, flaggedFractional, rejectedDuplicate, rejectedUnparseable, rejectedUnknownSku }
 }
 
 export interface ClinicTemplateUploadRow {
@@ -90,6 +96,7 @@ export interface ClinicTemplateUploadRow {
 export interface ParsedClinicTemplateFile {
   valid: ClinicTemplateUploadRow[]
   rejectedDuplicate: { sku: string }[]
+  rejectedUnknownSku: { sku: string }[]
 }
 
 // The reference prototype never implements the clinic-template (Self-audit)
@@ -97,7 +104,7 @@ export interface ParsedClinicTemplateFile {
 // names. We infer the most literal possible header names from the DB field
 // names themselves (Qty Kartu / Qty Fisik) since no other source of truth
 // exists; verify these match the clinic's real template before relying on it.
-export async function parseClinicTemplateFile(file: File): Promise<ParsedClinicTemplateFile> {
+export async function parseClinicTemplateFile(file: File, knownSkus?: Set<string>): Promise<ParsedClinicTemplateFile> {
   const buf = await file.arrayBuffer()
   const wb = XLSX.read(buf, { type: 'array' })
   const ws = wb.Sheets[wb.SheetNames[0]]
@@ -118,6 +125,7 @@ export async function parseClinicTemplateFile(file: File): Promise<ParsedClinicT
   const seen = new Set<string>()
   const valid: ClinicTemplateUploadRow[] = []
   const rejectedDuplicate: { sku: string }[] = []
+  const rejectedUnknownSku: { sku: string }[] = []
 
   for (let i = headerIdx + 1; i < rows.length; i++) {
     const r = rows[i]
@@ -128,6 +136,10 @@ export async function parseClinicTemplateFile(file: File): Promise<ParsedClinicT
       continue
     }
     seen.add(sku)
+    if (knownSkus && !knownSkus.has(sku)) {
+      rejectedUnknownSku.push({ sku })
+      continue
+    }
     const kartuRaw = iKartu > -1 ? String(r[iKartu] ?? '').trim() : ''
     const fisikRaw = iFisik > -1 ? String(r[iFisik] ?? '').trim() : ''
     valid.push({ sku, kartu: kartuRaw === '' ? null : kartuRaw, fisik: fisikRaw === '' ? null : fisikRaw })
@@ -135,5 +147,5 @@ export async function parseClinicTemplateFile(file: File): Promise<ParsedClinicT
 
   if (valid.length === 0) throw new Error('No valid item rows found under the header.')
 
-  return { valid, rejectedDuplicate }
+  return { valid, rejectedDuplicate, rejectedUnknownSku }
 }

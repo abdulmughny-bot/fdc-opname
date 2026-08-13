@@ -32,7 +32,15 @@ function WizardRoute() {
 // A single profile-circle menu replaces the separate Admin button + Sign out
 // link — its first item flips between "Admin" and "Dashboard" depending on
 // where you currently are, so it's always "go to the other place".
-function ProfileMenu({ profile, onSignOut }: { profile: Profile; onSignOut: () => void }) {
+function ProfileMenu({
+  profile,
+  canAccessAdmin,
+  onSignOut,
+}: {
+  profile: Profile
+  canAccessAdmin: boolean
+  onSignOut: () => void
+}) {
   const location = useLocation()
   const navigate = useNavigate()
   const onAdminPage = location.pathname.startsWith('/admin')
@@ -49,7 +57,7 @@ function ProfileMenu({ profile, onSignOut }: { profile: Profile; onSignOut: () =
           <p className="text-sm font-semibold text-ink">{profile.name}</p>
           <p className="text-xs text-ink-soft mt-0.5">{profile.role === 'Lead' ? 'Lead Account' : 'Team Member'}</p>
         </div>
-        {profile.role === 'Lead' && (
+        {canAccessAdmin && (
           <>
             <button
               type="button"
@@ -74,10 +82,8 @@ function ProfileMenu({ profile, onSignOut }: { profile: Profile; onSignOut: () =
 }
 
 function AppShell() {
-  const { status, profile, signOut } = useAuth()
+  const { status, profile, permissions, signOut } = useAuth()
   const navigate = useNavigate()
-  const location = useLocation()
-  const onAdminPage = location.pathname.startsWith('/admin')
 
   if (status !== 'ready' || !profile) return <LoginScreen />
 
@@ -98,32 +104,10 @@ function AppShell() {
               </div>
             </button>
 
-            {/* Nav Tabs */}
-            <nav className="flex items-center gap-1 flex-1 ml-6">
-              <button
-                type="button"
-                onClick={() => navigate('/')}
-                className={`px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${
-                  !onAdminPage ? 'bg-teal-wash text-teal-deep' : 'text-ink-soft hover:bg-line-soft'
-                }`}
-              >
-                Dashboard
-              </button>
-              {profile.role === 'Lead' && (
-                <button
-                  type="button"
-                  onClick={() => navigate('/admin')}
-                  className={`px-4 py-2 text-sm font-semibold rounded-lg transition-colors ${
-                    onAdminPage ? 'bg-teal-wash text-teal-deep' : 'text-ink-soft hover:bg-line-soft'
-                  }`}
-                >
-                  Settings
-                </button>
-              )}
-            </nav>
+            <div className="flex-1" />
 
             {/* Profile Menu */}
-            <ProfileMenu profile={profile} onSignOut={signOut} />
+            <ProfileMenu profile={profile} canAccessAdmin={permissions.canAccessAdmin} onSignOut={signOut} />
           </div>
         </div>
       </header>
@@ -134,7 +118,7 @@ function AppShell() {
           <Routes>
             <Route path="/" element={<DashboardRoute />} />
             <Route path="/wizard/:sessionId" element={<WizardRoute />} />
-            <Route path="/admin/*" element={profile.role === 'Lead' ? <AdminPage /> : <Navigate to="/" replace />} />
+            <Route path="/admin/*" element={permissions.canAccessAdmin ? <AdminPage /> : <Navigate to="/" replace />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
         </div>

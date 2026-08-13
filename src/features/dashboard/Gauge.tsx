@@ -13,8 +13,8 @@ export function Gauge({ pct }: { pct: number | null }) {
   const color = clamped >= 90 ? '#1F6F64' : clamped >= 75 ? '#B8862E' : '#B3401F'
 
   return (
-    <div className="flex flex-col items-center">
-      <svg width="220" height="130" viewBox="0 0 200 110">
+    <div className="flex justify-center">
+      <svg width="220" height="121" viewBox="0 0 200 110">
         <path d="M 20 100 A 80 80 0 0 1 180 100" fill="none" stroke="#E7E8E3" strokeWidth="14" strokeLinecap="round" />
         <path
           d={`M 20 100 A 80 80 0 0 1 ${x.toFixed(1)} ${y.toFixed(1)}`}
@@ -23,8 +23,18 @@ export function Gauge({ pct }: { pct: number | null }) {
           strokeWidth="14"
           strokeLinecap="round"
         />
+        <text
+          x={cx}
+          y={cy - 8}
+          textAnchor="middle"
+          dominantBaseline="middle"
+          className="font-display font-bold"
+          fontSize="30"
+          fill="#1B231F"
+        >
+          {clamped}%
+        </text>
       </svg>
-      <div className="font-display text-[34px] font-bold -mt-14">{clamped}%</div>
     </div>
   )
 }

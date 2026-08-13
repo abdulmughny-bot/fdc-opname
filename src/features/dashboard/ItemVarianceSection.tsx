@@ -5,21 +5,23 @@ import type { ItemVarianceAnalysis } from '../../lib/api'
 
 interface ItemVarianceSectionProps {
   periodDays?: number
+  clinicIds?: string[] | 'all'
 }
 
-export function ItemVarianceSection({ periodDays = 30 }: ItemVarianceSectionProps) {
+export function ItemVarianceSection({ periodDays = 30, clinicIds }: ItemVarianceSectionProps) {
   const [variance, setVariance] = useState<ItemVarianceAnalysis[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     loadVariance()
-  }, [periodDays])
+  }, [periodDays, clinicIds])
 
   async function loadVariance() {
     setLoading(true)
     try {
-      const data = await getItemVarianceAnalysis(periodDays)
-      setVariance((data || []).slice(0, 10)) // Top 10 items by variance
+      const ids = clinicIds && clinicIds !== 'all' ? clinicIds : undefined
+      const data = await getItemVarianceAnalysis(periodDays, ids)
+      setVariance((data || []).slice(0, 15)) // Top 15 items by variance
     } catch (error) {
       console.error('Error loading item variance:', error)
     } finally {
@@ -30,92 +32,133 @@ export function ItemVarianceSection({ periodDays = 30 }: ItemVarianceSectionProp
   if (loading) return <div className="text-center py-8 text-ink-soft">Loading variance data...</div>
 
   const totalVariance = variance.reduce((sum, item) => sum + (item.variance_value_rp || 0), 0)
+  const showClinicGrouping = clinicIds && clinicIds !== 'all' && Array.isArray(clinicIds) && clinicIds.length > 1
+
+  // Group items by clinic if multiple clinics selected
+  const variantsByClinic: Array<[string, ItemVarianceAnalysis[]]> = showClinicGrouping
+    ? Array.from(
+        variance.reduce(
+          (map, item) => {
+            const clinic = item.most_affected_clinic
+            if (!map.has(clinic)) map.set(clinic, [])
+            map.get(clinic)!.push(item)
+            return map
+          },
+          new Map<string, ItemVarianceAnalysis[]>()
+        ).entries()
+      )
+    : [['All Clinics', variance]]
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>📊 Item Variance Analysis (Top Issues)</CardTitle>
+        <CardTitle>Item Variance Analysis</CardTitle>
+        <p className="text-xs text-ink-soft mt-1">
+          {showClinicGrouping
+            ? `Top discrepancies by clinic (${variance.length} items)`
+            : `Top discrepancies (${variance.length} items)`}
+        </p>
       </CardHeader>
       <CardBody>
-        <div className="mb-4 p-3 bg-rust-wash rounded-lg">
-          <p className="text-xs text-ink-soft mb-1">Total Variance Value (Last {periodDays} days)</p>
-          <p className="text-2xl font-bold text-rust">Rp {totalVariance.toLocaleString()}</p>
-        </div>
+        {variance.length === 0 ? (
+          <p className="text-sm text-ink-soft text-center py-8">No variance data available.</p>
+        ) : (
+          <div className="space-y-6">
+            {/* Summary Box */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="bg-rust-wash rounded-lg p-4 border border-rust-wash/2">
+                <p className="text-xs text-ink-soft font-medium mb-1">Total Loss Value</p>
+                <p className="text-2xl font-bold text-rust font-mono">
+                  Rp {totalVariance.toLocaleString()}
+                </p>
+              </div>
+              <div className="bg-teal-wash rounded-lg p-4 border border-teal-wash/2">
+                <p className="text-xs text-ink-soft font-medium mb-1">Items with Discrepancy</p>
+                <p className="text-2xl font-bold text-teal-deep font-mono">{variance.length}</p>
+              </div>
+            </div>
 
-        <div className="space-y-2">
-          {variance.length === 0 ? (
-            <p className="text-sm text-ink-soft">No variance data available.</p>
-          ) : (
-            variance.map((item, index) => {
-              const isLoss = item.variance_qty < 0
-              const varianceColor = isLoss ? 'text-rust' : 'text-success'
-              const varianceBg = isLoss ? 'bg-rust-wash' : 'bg-success-wash'
+            {/* Items grouped by clinic if needed */}
+            {variantsByClinic.map(([clinic, items]) => (
+              <div key={clinic}>
+                {showClinicGrouping && (
+                  <div className="mb-3">
+                    <h3 className="font-semibold text-sm text-ink">{clinic}</h3>
+                    <div className="h-px bg-line mt-1" />
+                  </div>
+                )}
 
-              return (
-                <div
-                  key={item.item_id}
-                  className="border border-line rounded-lg p-3 hover:shadow-sm transition-shadow"
-                >
-                  <div className="flex items-start justify-between gap-3 mb-2">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="font-mono text-xs font-semibold text-teal-deep">
-                          {index + 1}. {item.sku}
-                        </span>
-                        <span className="text-xs text-ink-soft">{item.category || 'General'}</span>
+                <div className="space-y-2">
+                  {items.map((item) => {
+                    const isShortage = item.variance_qty < 0
+                    const shortageClass = isShortage ? 'text-rust' : 'text-teal'
+                    const bgClass = isShortage ? 'bg-rust-wash/40' : 'bg-teal-wash/40'
+                    const badgeVariant = isShortage ? 'error' : 'info'
+                    const isCritical = Math.abs(item.variance_pct) > 20
+
+                    return (
+                      <div
+                        key={item.item_id}
+                        className={`border border-line rounded-lg p-3.5 hover:shadow-sm transition-shadow ${bgClass}`}
+                      >
+                        {/* Header with SKU, Name, Variance */}
+                        <div className="flex items-start justify-between gap-3 mb-2.5">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1.5">
+                              <span className="font-mono text-xs font-bold text-teal-deep shrink-0">
+                                {item.sku}
+                              </span>
+                              {isCritical && <Badge variant={badgeVariant} size="sm">CRITICAL</Badge>}
+                            </div>
+                            <p className="text-sm font-semibold text-ink truncate">{item.item_name}</p>
+                            {item.category && (
+                              <p className="text-xs text-ink-soft mt-0.5">{item.category}</p>
+                            )}
+                          </div>
+
+                          {/* Variance amount and % */}
+                          <div className="text-right shrink-0">
+                            <p className={`font-mono font-bold text-lg ${shortageClass}`}>
+                              {item.variance_qty < 0 ? '−' : '+'}
+                              {Math.abs(item.variance_qty)}
+                            </p>
+                            <p className={`text-xs font-semibold ${shortageClass}`}>
+                              {item.variance_pct}%
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Quantities and Financial Impact */}
+                        <div className="grid grid-cols-3 gap-2 text-xs">
+                          <div>
+                            <p className="text-ink-soft font-medium mb-1">Sistem</p>
+                            <p className="font-mono font-semibold text-ink">
+                              {item.total_sistem_qty}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-ink-soft font-medium mb-1">Fisik</p>
+                            <p className="font-mono font-semibold text-ink">
+                              {item.total_fisik_qty}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-ink-soft font-medium mb-1">Loss Value</p>
+                            <p className={`font-mono font-semibold ${shortageClass}`}>
+                              {isShortage
+                                ? `Rp ${Math.abs(item.variance_value_rp || 0).toLocaleString()}`
+                                : '—'}
+                            </p>
+                          </div>
+                        </div>
                       </div>
-                      <p className="text-sm font-medium text-ink">{item.item_name}</p>
-                      <p className="text-xs text-ink-lighter mt-0.5">
-                        📍 {item.most_affected_clinic}
-                      </p>
-                    </div>
-                    <div className={`text-right ${varianceColor}`}>
-                      <p className="font-bold text-lg">{item.variance_qty}</p>
-                      <p className="text-xs">{item.variance_pct}%</p>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-2 mb-2">
-                    <div className="text-xs">
-                      <p className="text-ink-lighter">Sistem vs Fisik</p>
-                      <p className="font-mono">
-                        {item.total_sistem_qty} → {item.total_fisik_qty}
-                      </p>
-                    </div>
-                    <div className={`text-xs ${varianceBg} p-2 rounded`}>
-                      <p className="text-ink-soft">Financial Impact</p>
-                      <p className={`font-bold ${varianceColor}`}>
-                        Rp {(item.variance_value_rp || 0).toLocaleString()}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex gap-2">
-                    {Math.abs(item.variance_pct) > 30 && (
-                      <Badge variant="error" size="sm">
-                        🚨 CRITICAL
-                      </Badge>
-                    )}
-                    {Math.abs(item.variance_pct) > 15 && Math.abs(item.variance_pct) <= 30 && (
-                      <Badge variant="warning" size="sm">
-                        ⚠️ High
-                      </Badge>
-                    )}
-                    {isLoss ? (
-                      <Badge variant="error" size="sm">
-                        📉 Loss
-                      </Badge>
-                    ) : (
-                      <Badge variant="info" size="sm">
-                        📈 Overstock
-                      </Badge>
-                    )}
-                  </div>
+                    )
+                  })}
                 </div>
-              )
-            })
-          )}
-        </div>
+              </div>
+            ))}
+          </div>
+        )}
       </CardBody>
     </Card>
   )

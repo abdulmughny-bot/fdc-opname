@@ -1,6 +1,16 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { supabase } from '../../lib/supabase'
-import { adminDeactivateUser, adminListUsers, adminReactivateUser, adminUpsertUser, type AdminUserRow } from '../../lib/api'
+import {
+  adminAssignCustomRole,
+  adminDeactivateUser,
+  adminDeleteUser,
+  adminListCustomRoles,
+  adminListUsers,
+  adminReactivateUser,
+  adminUpsertUser,
+  type AdminUserRow,
+  type CustomRoleRow,
+} from '../../lib/api'
 import { useAuth } from '../auth'
 import { Banner } from '../wizard/shared'
 import { useAllClinics } from './useAllClinics'
@@ -206,6 +216,18 @@ function PersonEditor({
   )
 }
 
+function TrashIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 6h18" />
+      <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+      <path d="M10 11v6" />
+      <path d="M14 11v6" />
+    </svg>
+  )
+}
+
 function StatusControl({
   person,
   isSelf,
@@ -258,17 +280,23 @@ function StatusControl({
 export function PeopleAccess() {
   const { profile } = useAuth()
   const [people, setPeople] = useState<AdminUserRow[]>([])
+  const [customRoles, setCustomRoles] = useState<CustomRoleRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [editorFor, setEditorFor] = useState<AdminUserRow | 'new' | null>(null)
   const [confirmingEmail, setConfirmingEmail] = useState<string | null>(null)
   const [busyEmail, setBusyEmail] = useState<string | null>(null)
+  const [deletingEmail, setDeletingEmail] = useState<string | null>(null)
+  const [deleteBusyEmail, setDeleteBusyEmail] = useState<string | null>(null)
+  const [roleBusyEmail, setRoleBusyEmail] = useState<string | null>(null)
 
   async function reload() {
     setLoading(true)
     setError(null)
     try {
-      setPeople(await adminListUsers())
+      const [peopleRes, rolesRes] = await Promise.all([adminListUsers(), adminListCustomRoles()])
+      setPeople(peopleRes)
+      setCustomRoles(rolesRes)
     } catch (err) {
       setError((err as Error).message)
     } finally {
@@ -297,12 +325,41 @@ export function PeopleAccess() {
     }
   }
 
+  async function handleDelete(p: AdminUserRow) {
+    setDeleteBusyEmail(p.email)
+    setError(null)
+    try {
+      await adminDeleteUser(p.email)
+      setDeletingEmail(null)
+      await reload()
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setDeleteBusyEmail(null)
+    }
+  }
+
+  async function handleAssignRole(p: AdminUserRow, customRoleId: string | null) {
+    setRoleBusyEmail(p.email)
+    setError(null)
+    try {
+      await adminAssignCustomRole(p.email, customRoleId)
+      await reload()
+    } catch (err) {
+      setError((err as Error).message)
+    } finally {
+      setRoleBusyEmail(null)
+    }
+  }
+
   return (
     <div className="bg-paper border border-line rounded-[10px] p-6">
       <div className="flex items-center justify-between gap-3 mb-1.5">
         <div>
           <h2 className="font-display text-base font-bold">People &amp; Access</h2>
-          <p className="text-[13px] text-ink-soft">Add people before they sign in. Deactivating is reversible and keeps history.</p>
+          <p className="text-[13px] text-ink-soft">
+            Add people before they sign in. Deactivating is reversible and keeps history — deleting is not.
+          </p>
         </div>
         <button
           type="button"
@@ -323,6 +380,7 @@ export function PeopleAccess() {
             <tr className="text-left text-xs text-ink-soft border-b border-line">
               <th className="py-1.5 font-medium">Person</th>
               <th className="py-1.5 font-medium">Role</th>
+              <th className="py-1.5 font-medium">Custom role</th>
               <th className="py-1.5 font-medium">Clinic scope</th>
               <th className="py-1.5 font-medium">Status</th>
               <th className="py-1.5 font-medium text-right"></th>
@@ -341,6 +399,29 @@ export function PeopleAccess() {
                     </div>
                   </td>
                   <td className="py-2">{p.role}</td>
+                  <td className="py-2">
+                    {p.role === 'Lead' ? (
+                      <span className="text-xs text-ink-soft">— (full access)</span>
+                    ) : !p.has_signed_in ? (
+                      <span className="text-xs text-ink-soft" title="They need to sign in once before a role can be assigned.">
+                        Sign in first
+                      </span>
+                    ) : (
+                      <select
+                        value={p.custom_role_id ?? ''}
+                        disabled={roleBusyEmail === p.email}
+                        onChange={(e) => handleAssignRole(p, e.target.value || null)}
+                        className="rounded-md border border-line px-2 py-1 text-xs disabled:opacity-50"
+                      >
+                        <option value="">None</option>
+                        {customRoles.map((r) => (
+                          <option key={r.id} value={r.id}>
+                            {r.name}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                  </td>
                   <td className="py-2">{scopeText(p)}</td>
                   <td className="py-2">
                     <StatusControl
@@ -354,9 +435,37 @@ export function PeopleAccess() {
                     />
                   </td>
                   <td className="py-2 text-right whitespace-nowrap">
-                    <button type="button" onClick={() => setEditorFor(p)} className="text-xs text-ink-soft hover:text-ink hover:underline">
-                      Edit
-                    </button>
+                    {deletingEmail === p.email ? (
+                      <span className="inline-flex items-center gap-2 text-xs">
+                        <span className="text-ink-soft">Delete?</span>
+                        <button
+                          type="button"
+                          disabled={deleteBusyEmail === p.email}
+                          onClick={() => handleDelete(p)}
+                          className="text-rust font-semibold hover:underline disabled:opacity-50"
+                        >
+                          {deleteBusyEmail === p.email ? 'Working…' : 'Yes'}
+                        </button>
+                        <button type="button" onClick={() => setDeletingEmail(null)} className="text-ink-soft hover:underline">
+                          Cancel
+                        </button>
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1">
+                        <button type="button" onClick={() => setEditorFor(p)} className="text-xs text-ink-soft hover:text-ink hover:underline px-2 py-1">
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          disabled={isSelf}
+                          title={isSelf ? 'You cannot delete your own account.' : 'Delete permanently'}
+                          onClick={() => setDeletingEmail(p.email)}
+                          className="text-rust hover:bg-rust-wash rounded-md p-1.5 disabled:opacity-30 disabled:pointer-events-none"
+                        >
+                          <TrashIcon />
+                        </button>
+                      </span>
+                    )}
                   </td>
                 </tr>
               )

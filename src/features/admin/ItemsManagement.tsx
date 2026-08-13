@@ -1,20 +1,35 @@
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../../lib/supabase'
-import { Card, CardHeader, CardTitle, CardBody, Badge, Button, Dialog } from '../../components'
-import type { ItemMasterRow, ItemApprovalRow, ItemPricingRow } from '../../lib/api'
-import { approveItem, rejectItem, updateItemPricing } from '../../lib/api'
+import { Card, CardHeader, CardTitle, CardBody, Button, Dialog } from '../../components'
+import type { ItemMasterRow, ItemPricingRow } from '../../lib/api'
+import { updateItemPricing } from '../../lib/api'
 import { useAuth } from '../auth'
 
 interface ItemWithPricing extends ItemMasterRow {
   pricing?: ItemPricingRow
 }
 
+const CATEGORIES = ['Logistic', 'BHP']
+const UNITS = ['Box', 'Pcs', 'Syringe', 'Ml']
+
+function TrashIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M3 6h18" />
+      <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+      <path d="M10 11v6" />
+      <path d="M14 11v6" />
+    </svg>
+  )
+}
+
 export function ItemsManagement() {
-  const { profile } = useAuth()
+  const { permissions } = useAuth()
+  const canViewPricing = permissions.canViewPricing
   const [items, setItems] = useState<ItemWithPricing[]>([])
-  const [approvals, setApprovals] = useState<ItemApprovalRow[]>([])
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState<'browse' | 'approvals' | 'import'>('browse')
+  const [search, setSearch] = useState('')
 
   // Edit mode
   const [editingItem, setEditingItem] = useState<ItemWithPricing | null>(null)
@@ -22,24 +37,20 @@ export function ItemsManagement() {
   const [editName, setEditName] = useState('')
   const [editCategory, setEditCategory] = useState('')
   const [editUnit, setEditUnit] = useState('')
-  const [editStdQty, setEditStdQty] = useState('')
   const [editPrice, setEditPrice] = useState('')
-  const [editCost, setEditCost] = useState('')
 
-  // Approval mode
-  const [selectedApproval, setSelectedApproval] = useState<ItemApprovalRow | null>(null)
-  const [approvalAction, setApprovalAction] = useState<'approve' | 'reject' | null>(null)
-  const [rejectionReason, setRejectionReason] = useState('')
-
-  // Personal (single-item) import
+  // Add single item
+  const [showAddModal, setShowAddModal] = useState(false)
   const [newSKU, setNewSKU] = useState('')
   const [newName, setNewName] = useState('')
   const [newCategory, setNewCategory] = useState('')
   const [newUnit, setNewUnit] = useState('Box')
-  const [newStdQty, setNewStdQty] = useState('')
-  const [newCost, setNewCost] = useState('')
   const [addingItem, setAddingItem] = useState(false)
   const [addItemError, setAddItemError] = useState('')
+
+  // Delete
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [deleteBusyId, setDeleteBusyId] = useState<string | null>(null)
 
   const bulkFileRef = useRef<HTMLInputElement>(null)
 
@@ -50,14 +61,12 @@ export function ItemsManagement() {
   async function loadData() {
     setLoading(true)
     try {
-      const [itemsRes, approvalsRes, pricingRes] = await Promise.all([
+      const [itemsRes, pricingRes] = await Promise.all([
         supabase.from('item_master').select('*').eq('status', 'Active').order('sku'),
-        supabase.from('item_approval').select('*').order('created_at', { ascending: false }),
         supabase.from('item_pricing').select('*').is('clinic_id', null),
       ])
 
       if (itemsRes.error) throw itemsRes.error
-      if (approvalsRes.error) throw approvalsRes.error
       if (pricingRes.error) throw pricingRes.error
 
       const itemsData: ItemWithPricing[] = itemsRes.data || []
@@ -68,7 +77,6 @@ export function ItemsManagement() {
       })
 
       setItems(itemsData)
-      setApprovals(approvalsRes.data || [])
     } catch (error) {
       console.error('Error loading items:', error)
     } finally {
@@ -85,7 +93,6 @@ export function ItemsManagement() {
         name: editName,
         category: editCategory || null,
         unit: editUnit,
-        std_qty_per_location: editStdQty ? parseInt(editStdQty) : null,
       }
 
       const { error } = await supabase.from('item_master').update(updateData).eq('id', editingItem.id)
@@ -93,8 +100,8 @@ export function ItemsManagement() {
       if (error) throw error
 
       // Update pricing if provided
-      if (editPrice && profile?.role === 'Lead') {
-        await updateItemPricing(editingItem.id, parseFloat(editPrice), editCost ? parseFloat(editCost) : undefined)
+      if (editPrice && canViewPricing) {
+        await updateItemPricing(editingItem.id, parseFloat(editPrice))
       }
 
       setEditingItem(null)
@@ -104,28 +111,17 @@ export function ItemsManagement() {
     }
   }
 
-  async function handleApprove() {
-    if (!selectedApproval) return
+  async function handleDeleteItem(id: string) {
+    setDeleteBusyId(id)
     try {
-      await approveItem(selectedApproval.id)
-      setSelectedApproval(null)
-      setApprovalAction(null)
+      const { error } = await supabase.from('item_master').delete().eq('id', id)
+      if (error) throw error
+      setDeletingId(null)
       await loadData()
     } catch (error) {
-      console.error('Error approving item:', error)
-    }
-  }
-
-  async function handleReject() {
-    if (!selectedApproval || !rejectionReason) return
-    try {
-      await rejectItem(selectedApproval.id, rejectionReason)
-      setSelectedApproval(null)
-      setApprovalAction(null)
-      setRejectionReason('')
-      await loadData()
-    } catch (error) {
-      console.error('Error rejecting item:', error)
+      console.error('Error deleting item:', error)
+    } finally {
+      setDeleteBusyId(null)
     }
   }
 
@@ -135,7 +131,7 @@ export function ItemsManagement() {
       const lines = text.split('\n').filter((line) => line.trim())
       const headers = lines[0].split(',').map((h) => h.trim().toLowerCase())
 
-      const items = lines.slice(1).map((line) => {
+      const rows = lines.slice(1).map((line) => {
         const values = line.split(',').map((v) => v.trim())
         const row: any = {}
         headers.forEach((header, index) => {
@@ -144,15 +140,13 @@ export function ItemsManagement() {
         return row
       })
 
-      const validItems = items
+      const validItems = rows
         .filter((row: any) => row.sku && row.name)
         .map((row: any) => ({
           sku: row.sku,
           name: row.name,
           category: row.category || null,
           unit: row.unit || 'Box',
-          std_qty_per_location: row.std_qty_per_location ? parseInt(row.std_qty_per_location) : null,
-          cost_price: row.cost_price ? parseFloat(row.cost_price) : null,
         }))
 
       if (validItems.length > 0) {
@@ -181,8 +175,6 @@ export function ItemsManagement() {
         name: newName.trim(),
         category: newCategory.trim() || null,
         unit: newUnit.trim() || 'Box',
-        std_qty_per_location: newStdQty ? parseInt(newStdQty) : null,
-        cost_price: newCost ? parseFloat(newCost) : null,
       })
       if (error) throw error
 
@@ -190,8 +182,7 @@ export function ItemsManagement() {
       setNewName('')
       setNewCategory('')
       setNewUnit('Box')
-      setNewStdQty('')
-      setNewCost('')
+      setShowAddModal(false)
       await loadData()
     } catch (error: any) {
       setAddItemError(error?.message || 'Failed to add item.')
@@ -200,236 +191,131 @@ export function ItemsManagement() {
     }
   }
 
+  const filteredItems = items.filter((item) => {
+    if (!search.trim()) return true
+    const q = search.trim().toLowerCase()
+    return item.sku.toLowerCase().includes(q) || item.name.toLowerCase().includes(q) || (item.category ?? '').toLowerCase().includes(q)
+  })
+
   if (loading) return <div className="text-center py-12 text-ink-soft">Loading item master...</div>
 
   return (
-    <div className="space-y-6">
-      {/* Tabs */}
-      <div className="flex gap-4 border-b border-line overflow-x-auto">
-        {['browse', 'approvals', 'import'].map((tab) => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab as any)}
-            className={`px-4 py-2.5 text-sm font-semibold border-b-2 -mb-px whitespace-nowrap transition-colors ${
-              activeTab === tab
-                ? 'text-teal-deep border-teal-deep'
-                : 'text-ink-soft border-transparent hover:text-ink'
-            }`}
-          >
-            {tab === 'browse' && `📦 Items (${items.length})`}
-            {tab === 'approvals' && `⏳ Approvals (${approvals.filter((a) => a.status === 'Pending').length})`}
-            {tab === 'import' && '📤 Import'}
-          </button>
-        ))}
-      </div>
-
-      {/* BROWSE TAB */}
-      {activeTab === 'browse' && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Item Master Database</CardTitle>
-          </CardHeader>
-          <CardBody>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-line-soft">
-                    <th className="text-left py-2 font-semibold text-ink">SKU</th>
-                    <th className="text-left py-2 font-semibold text-ink">Name</th>
-                    <th className="text-left py-2 font-semibold text-ink">Category</th>
-                    <th className="text-left py-2 font-semibold text-ink">Unit</th>
-                    <th className="text-left py-2 font-semibold text-ink">Std Qty</th>
-                    {profile?.role === 'Lead' && (
-                      <>
-                        <th className="text-right py-2 font-semibold text-ink">Cost</th>
-                        <th className="text-right py-2 font-semibold text-ink">Price</th>
-                        <th className="text-right py-2 font-semibold text-ink">Margin %</th>
-                      </>
-                    )}
-                    <th className="text-left py-2 font-semibold text-ink">Action</th>
+    <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <CardTitle>Item Master Database ({filteredItems.length})</CardTitle>
+            <div className="flex items-center gap-2 flex-wrap">
+              <input
+                type="text"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search SKU, name, category…"
+                className="border border-line rounded-lg px-3 py-1.5 text-sm w-56"
+              />
+              <input
+                ref={bulkFileRef}
+                type="file"
+                accept=".xlsx,.csv"
+                className="hidden"
+                onChange={(e) => {
+                  if (e.target.files?.[0]) handleBulkImport(e.target.files[0])
+                }}
+              />
+              <Button variant="secondary" size="sm" onClick={() => bulkFileRef.current?.click()}>
+                Import CSV
+              </Button>
+              <Button variant="primary" size="sm" onClick={() => setShowAddModal(true)}>
+                + Add Item
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardBody>
+          <div className="overflow-auto max-h-[65vh]">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-line-soft">
+                  <th className="text-left py-2 font-semibold text-ink bg-paper sticky top-0">SKU</th>
+                  <th className="text-left py-2 font-semibold text-ink bg-paper sticky top-0">Name</th>
+                  <th className="text-left py-2 font-semibold text-ink bg-paper sticky top-0">Category</th>
+                  <th className="text-left py-2 font-semibold text-ink bg-paper sticky top-0">Unit</th>
+                  {canViewPricing && <th className="text-right py-2 font-semibold text-ink bg-paper sticky top-0">Price</th>}
+                  <th className="text-left py-2 font-semibold text-ink bg-paper sticky top-0">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredItems.length === 0 ? (
+                  <tr>
+                    <td colSpan={canViewPricing ? 6 : 5} className="py-8 text-center text-ink-soft">
+                      {items.length === 0 ? 'No items yet — add one or import a CSV.' : 'No items match your search.'}
+                    </td>
                   </tr>
-                </thead>
-                <tbody>
-                  {items.map((item) => {
-                    const marginPct = item.pricing
-                      ? (((item.pricing.selling_price - (item.pricing.cost_price || 0)) /
-                          (item.pricing.cost_price || 1)) *
-                          100).toFixed(1)
-                      : '—'
-
+                ) : (
+                  filteredItems.map((item) => {
                     return (
                       <tr key={item.id} className="border-b border-line-soft hover:bg-paper-secondary">
                         <td className="py-2.5 font-mono text-xs text-teal-deep">{item.sku}</td>
                         <td className="py-2.5">{item.name}</td>
                         <td className="py-2.5 text-ink-soft text-xs">{item.category || '—'}</td>
                         <td className="py-2.5">{item.unit}</td>
-                        <td className="py-2.5 text-right">{item.std_qty_per_location || '—'}</td>
-                        {profile?.role === 'Lead' && (
-                          <>
-                            <td className="py-2.5 text-right text-ink-soft">
-                              Rp {item.pricing?.cost_price?.toLocaleString() || '—'}
-                            </td>
-                            <td className="py-2.5 text-right font-semibold">
-                              Rp {item.pricing?.selling_price?.toLocaleString() || '—'}
-                            </td>
-                            <td className="py-2.5 text-right">{marginPct !== '—' ? `${marginPct}%` : '—'}</td>
-                          </>
+                        {canViewPricing && (
+                          <td className="py-2.5 text-right font-semibold">
+                            Rp {item.pricing?.selling_price?.toLocaleString() || '—'}
+                          </td>
                         )}
                         <td className="py-2.5">
-                          <Button
-                            variant="secondary"
-                            size="sm"
-                            onClick={() => {
-                              setEditingItem(item)
-                              setEditSKU(item.sku)
-                              setEditName(item.name)
-                              setEditCategory(item.category || '')
-                              setEditUnit(item.unit)
-                              setEditStdQty(item.std_qty_per_location?.toString() || '')
-                              setEditPrice(item.pricing?.selling_price?.toString() || '')
-                              setEditCost(item.pricing?.cost_price?.toString() || '')
-                            }}
-                          >
-                            ✎ Edit
-                          </Button>
+                          {deletingId === item.id ? (
+                            <span className="inline-flex items-center gap-2 text-xs">
+                              <span className="text-ink-soft">Delete?</span>
+                              <button
+                                type="button"
+                                disabled={deleteBusyId === item.id}
+                                onClick={() => handleDeleteItem(item.id)}
+                                className="text-rust font-semibold hover:underline disabled:opacity-50"
+                              >
+                                {deleteBusyId === item.id ? 'Working…' : 'Yes'}
+                              </button>
+                              <button type="button" onClick={() => setDeletingId(null)} className="text-ink-soft hover:underline">
+                                Cancel
+                              </button>
+                            </span>
+                          ) : (
+                            <div className="flex items-center gap-1.5">
+                              <Button
+                                variant="secondary"
+                                size="sm"
+                                onClick={() => {
+                                  setEditingItem(item)
+                                  setEditSKU(item.sku)
+                                  setEditName(item.name)
+                                  setEditCategory(item.category || '')
+                                  setEditUnit(item.unit)
+                                  setEditPrice(item.pricing?.selling_price?.toString() || '')
+                                }}
+                              >
+                                Edit
+                              </Button>
+                              <button
+                                type="button"
+                                onClick={() => setDeletingId(item.id)}
+                                title="Delete item"
+                                className="text-rust hover:bg-rust-wash rounded-md p-1.5 transition-colors"
+                              >
+                                <TrashIcon />
+                              </button>
+                            </div>
+                          )}
                         </td>
                       </tr>
                     )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </CardBody>
-        </Card>
-      )}
-
-      {/* APPROVALS TAB */}
-      {activeTab === 'approvals' && (
-        <div className="space-y-4">
-          {approvals
-            .filter((a) => a.status === 'Pending')
-            .map((approval) => (
-              <Card key={approval.id}>
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <h3 className="font-semibold text-ink">{approval.item_id}</h3>
-                    <p className="text-sm text-ink-soft mt-1">Uploaded by: {approval.uploaded_by}</p>
-                    <p className="text-xs text-ink-lighter mt-1">
-                      {new Date(approval.created_at).toLocaleDateString()}
-                    </p>
-                  </div>
-                  <div className="flex gap-2">
-                    <Button
-                      variant="primary"
-                      size="sm"
-                      onClick={() => {
-                        setSelectedApproval(approval)
-                        setApprovalAction('approve')
-                      }}
-                    >
-                      ✓ Approve
-                    </Button>
-                    <Button
-                      variant="danger"
-                      size="sm"
-                      onClick={() => {
-                        setSelectedApproval(approval)
-                        setApprovalAction('reject')
-                      }}
-                    >
-                      ✗ Reject
-                    </Button>
-                  </div>
-                </div>
-              </Card>
-            ))}
-        </div>
-      )}
-
-      {/* IMPORT TAB */}
-      {activeTab === 'import' && (
-        <div className="grid grid-cols-2 gap-4 max-[600px]:grid-cols-1">
-          <Card>
-            <CardHeader>
-              <CardTitle>📤 Bulk Import (Excel)</CardTitle>
-            </CardHeader>
-            <CardBody>
-              <p className="text-sm text-ink-soft mb-4">
-                Upload Excel file with columns: SKU, Name, Category, Unit, Std Qty, Cost Price
-              </p>
-              <input
-                ref={bulkFileRef}
-                type="file"
-                accept=".xlsx,.csv"
-                onChange={(e) => {
-                  if (e.target.files?.[0]) handleBulkImport(e.target.files[0])
-                }}
-                className="hidden"
-              />
-              <Button onClick={() => bulkFileRef.current?.click()} variant="primary" className="w-full">
-                Choose Excel File
-              </Button>
-            </CardBody>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>➕ Personal Import</CardTitle>
-            </CardHeader>
-            <CardBody>
-              <p className="text-sm text-ink-soft mb-4">Add a single item to the master list</p>
-              <div className="space-y-2">
-                <input
-                  value={newSKU}
-                  onChange={(e) => setNewSKU(e.target.value)}
-                  placeholder="SKU *"
-                  className="w-full border border-line rounded-lg p-2 text-sm"
-                />
-                <input
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
-                  placeholder="Name *"
-                  className="w-full border border-line rounded-lg p-2 text-sm"
-                />
-                <div className="grid grid-cols-2 gap-2">
-                  <input
-                    value={newCategory}
-                    onChange={(e) => setNewCategory(e.target.value)}
-                    placeholder="Category"
-                    className="w-full border border-line rounded-lg p-2 text-sm"
-                  />
-                  <input
-                    value={newUnit}
-                    onChange={(e) => setNewUnit(e.target.value)}
-                    placeholder="Unit"
-                    className="w-full border border-line rounded-lg p-2 text-sm"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <input
-                    value={newStdQty}
-                    onChange={(e) => setNewStdQty(e.target.value)}
-                    placeholder="Std Qty"
-                    type="number"
-                    className="w-full border border-line rounded-lg p-2 text-sm"
-                  />
-                  <input
-                    value={newCost}
-                    onChange={(e) => setNewCost(e.target.value)}
-                    placeholder="Cost Price"
-                    type="number"
-                    className="w-full border border-line rounded-lg p-2 text-sm"
-                  />
-                </div>
-                {addItemError && <p className="text-xs text-error">{addItemError}</p>}
-                <Button onClick={handleAddSingleItem} variant="primary" className="w-full" disabled={addingItem}>
-                  {addingItem ? 'Adding...' : 'Add Item'}
-                </Button>
-              </div>
-            </CardBody>
-          </Card>
-        </div>
-      )}
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+        </CardBody>
+      </Card>
 
       {/* Edit Item Modal */}
       <Dialog
@@ -470,114 +356,119 @@ export function ItemsManagement() {
             </div>
             <div>
               <label className="text-xs font-semibold text-ink-soft block mb-1">Category</label>
-              <input
-                type="text"
+              <select
                 value={editCategory}
                 onChange={(e) => setEditCategory(e.target.value)}
                 className="w-full border border-line rounded-lg p-2 text-sm"
-              />
+              >
+                <option value="">—</option>
+                {CATEGORIES.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs font-semibold text-ink-soft block mb-1">Unit</label>
-                <input
-                  type="text"
-                  value={editUnit}
-                  onChange={(e) => setEditUnit(e.target.value)}
-                  placeholder="Box"
-                  className="w-full border border-line rounded-lg p-2 text-sm"
-                />
-              </div>
-              <div>
-                <label className="text-xs font-semibold text-ink-soft block mb-1">Std Qty</label>
-                <input
-                  type="number"
-                  value={editStdQty}
-                  onChange={(e) => setEditStdQty(e.target.value)}
-                  className="w-full border border-line rounded-lg p-2 text-sm"
-                />
-              </div>
+            <div>
+              <label className="text-xs font-semibold text-ink-soft block mb-1">Unit</label>
+              <select
+                value={editUnit}
+                onChange={(e) => setEditUnit(e.target.value)}
+                className="w-full border border-line rounded-lg p-2 text-sm"
+              >
+                {UNITS.map((u) => (
+                  <option key={u} value={u}>
+                    {u}
+                  </option>
+                ))}
+              </select>
             </div>
 
-            {profile?.role === 'Lead' && (
+            {canViewPricing && (
               <div>
-                <h4 className="text-xs font-semibold text-ink-soft mb-2">💰 Pricing (Lead Only)</h4>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-xs text-ink-soft block mb-1">Cost Price (Rp)</label>
-                    <input
-                      type="number"
-                      value={editCost}
-                      onChange={(e) => setEditCost(e.target.value)}
-                      className="w-full border border-line rounded-lg p-2 text-sm"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-ink-soft block mb-1">Selling Price (Rp) *</label>
-                    <input
-                      type="number"
-                      value={editPrice}
-                      onChange={(e) => setEditPrice(e.target.value)}
-                      className="w-full border border-line rounded-lg p-2 text-sm"
-                    />
-                  </div>
+                <h4 className="text-xs font-semibold text-ink-soft mb-2">Pricing</h4>
+                <div>
+                  <label className="text-xs text-ink-soft block mb-1">Price (Rp) *</label>
+                  <input
+                    type="number"
+                    value={editPrice}
+                    onChange={(e) => setEditPrice(e.target.value)}
+                    className="w-full border border-line rounded-lg p-2 text-sm"
+                  />
                 </div>
-                {editPrice && editCost && (
-                  <p className="text-xs text-teal-deep mt-2">
-                    Margin: {(((parseFloat(editPrice) - parseFloat(editCost)) / parseFloat(editCost)) * 100).toFixed(1)}%
-                  </p>
-                )}
               </div>
             )}
           </div>
         )}
       </Dialog>
 
-      {/* Approval Modal */}
+      {/* Add Item Modal */}
       <Dialog
-        isOpen={approvalAction !== null && selectedApproval !== null}
-        onClose={() => {
-          setApprovalAction(null)
-          setSelectedApproval(null)
-          setRejectionReason('')
-        }}
-        title={approvalAction === 'approve' ? 'Approve Item' : 'Reject Item'}
+        isOpen={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        title="Add Item"
         size="sm"
         actions={
           <div className="flex gap-2">
-            <Button variant="ghost" onClick={() => {
-              setApprovalAction(null)
-              setSelectedApproval(null)
-            }}>
+            <Button variant="ghost" onClick={() => setShowAddModal(false)}>
               Cancel
             </Button>
-            <Button
-              variant={approvalAction === 'approve' ? 'primary' : 'danger'}
-              onClick={approvalAction === 'approve' ? handleApprove : handleReject}
-              disabled={approvalAction === 'reject' && !rejectionReason}
-            >
-              {approvalAction === 'approve' ? 'Approve' : 'Reject'}
+            <Button variant="primary" onClick={handleAddSingleItem} disabled={addingItem}>
+              {addingItem ? 'Adding…' : 'Add Item'}
             </Button>
           </div>
         }
       >
-        {selectedApproval && approvalAction === 'reject' && (
-          <div className="space-y-3">
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs font-semibold text-ink-soft block mb-1">SKU *</label>
+            <input
+              value={newSKU}
+              onChange={(e) => setNewSKU(e.target.value)}
+              className="w-full border border-line rounded-lg p-2 text-sm"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-semibold text-ink-soft block mb-1">Name *</label>
+            <input
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              className="w-full border border-line rounded-lg p-2 text-sm"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="text-xs font-semibold text-ink-soft block mb-1">Rejection Reason *</label>
-              <textarea
-                value={rejectionReason}
-                onChange={(e) => setRejectionReason(e.target.value)}
-                placeholder="Why is this item being rejected?"
+              <label className="text-xs font-semibold text-ink-soft block mb-1">Category</label>
+              <select
+                value={newCategory}
+                onChange={(e) => setNewCategory(e.target.value)}
                 className="w-full border border-line rounded-lg p-2 text-sm"
-                rows={3}
-              />
+              >
+                <option value="">—</option>
+                {CATEGORIES.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-ink-soft block mb-1">Unit</label>
+              <select
+                value={newUnit}
+                onChange={(e) => setNewUnit(e.target.value)}
+                className="w-full border border-line rounded-lg p-2 text-sm"
+              >
+                {UNITS.map((u) => (
+                  <option key={u} value={u}>
+                    {u}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
-        )}
-        {selectedApproval && approvalAction === 'approve' && (
-          <p className="text-sm text-ink-soft">Approve this item to add it to the master database?</p>
-        )}
+          {addItemError && <p className="text-xs text-error">{addItemError}</p>}
+        </div>
       </Dialog>
     </div>
   )
