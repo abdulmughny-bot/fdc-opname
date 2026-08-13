@@ -71,9 +71,23 @@ interface FdcSchema {
       Relationships: []
     }
     allowed_users: {
-      Row: { email: string; name: string; role: Role; all_clinics: boolean; active: boolean }
-      Insert: { email: string; name: string; role?: Role; all_clinics?: boolean; active?: boolean }
-      Update: Partial<{ email: string; name: string; role: Role; all_clinics: boolean; active: boolean }>
+      Row: { email: string; name: string; role: Role; all_clinics: boolean; clinic_ids: string[]; active: boolean }
+      Insert: {
+        email: string
+        name: string
+        role?: Role
+        all_clinics?: boolean
+        clinic_ids?: string[]
+        active?: boolean
+      }
+      Update: Partial<{
+        email: string
+        name: string
+        role: Role
+        all_clinics: boolean
+        clinic_ids: string[]
+        active: boolean
+      }>
       Relationships: []
     }
     clinic_recipients: {

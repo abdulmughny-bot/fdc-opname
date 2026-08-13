@@ -67,9 +67,11 @@ function PersonEditor({
   const [role, setRole] = useState<'Lead' | 'Team'>(editing ? person.role : 'Team')
   const [allClinics, setAllClinics] = useState(editing ? person.all_clinics : false)
   const [clinicIds, setClinicIds] = useState<string[]>(editing ? person.clinic_ids : [])
+  const [clinicSearch, setClinicSearch] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [inviteWarning, setInviteWarning] = useState<string | null>(null)
+  const visibleClinics = clinics.filter((c) => c.name.toLowerCase().includes(clinicSearch.trim().toLowerCase()))
 
   function toggleClinic(id: string) {
     setClinicIds((prev) => (prev.includes(id) ? prev.filter((c) => c !== id) : [...prev, id]))
@@ -160,13 +162,22 @@ function PersonEditor({
       </div>
       <div className="mt-3">
         <label className="block text-xs font-semibold text-ink-soft mb-1.5">Specific clinics</label>
+        <input
+          type="text"
+          value={clinicSearch}
+          onChange={(e) => setClinicSearch(e.target.value)}
+          placeholder="Search clinics…"
+          disabled={allClinics}
+          className="w-full rounded-md border border-line px-2.5 py-1.5 text-sm mb-1.5 disabled:opacity-40"
+        />
         <div
           className={
             'border border-line rounded-md p-2.5 max-h-48 overflow-auto grid grid-cols-2 gap-x-3 transition-opacity ' +
             (allClinics ? 'opacity-40 pointer-events-none' : '')
           }
         >
-          {clinics.map((c) => (
+          {visibleClinics.length === 0 && <div className="col-span-2 text-xs text-ink-soft py-1">No clinics match.</div>}
+          {visibleClinics.map((c) => (
             <label key={c.id} className="flex items-center gap-2 text-sm py-1 px-1 cursor-pointer">
               <input type="checkbox" checked={clinicIds.includes(c.id)} onChange={() => toggleClinic(c.id)} />
               {c.name}
