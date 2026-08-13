@@ -7,45 +7,69 @@ export function ClinicTable({ rows }: { rows: ClinicRow[] }) {
   if (rows.length === 0) {
     return <div className="text-center py-10 text-sm text-ink-soft">No finished sessions yet by clinic.</div>
   }
+
+  // Sort by percentage descending and add ranking
+  const sorted = [...rows].sort((a, b) => b.pct - a.pct).map((row, idx) => ({
+    ...row,
+    rank: idx + 1,
+  }))
+
+  const maxPct = Math.max(...sorted.map((r) => r.pct), 100)
+
   return (
-    <table className="w-full border-collapse text-[13.5px]">
-      <thead>
-        <tr>
-          <th className="text-left font-mono text-[10.5px] tracking-wider uppercase text-ink-soft font-medium px-2.5 py-2.5 border-b border-line">
-            Clinic
-          </th>
-          <th className="text-right font-mono text-[10.5px] tracking-wider uppercase text-ink-soft font-medium px-2.5 py-2.5 border-b border-line">
-            Ketersesuaian
-          </th>
-          <th className="text-left font-mono text-[10.5px] tracking-wider uppercase text-ink-soft font-medium px-2.5 py-2.5 border-b border-line">
-            Status
-          </th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((r) => {
-          const flag = r.pct < 90
-          return (
-            <tr key={r.name}>
-              <td className="px-2.5 py-2.5 border-b border-line">{r.name}</td>
-              <td className="px-2.5 py-2.5 border-b border-line text-right font-mono">{r.pct}%</td>
-              <td className="px-2.5 py-2.5 border-b border-line">
-                {flag ? (
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold bg-rust-wash text-rust">
-                    <span className="w-1.5 h-1.5 rounded-full bg-rust" />
-                    Below 90
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11.5px] font-semibold bg-teal-wash text-teal-deep">
-                    <span className="w-1.5 h-1.5 rounded-full bg-teal" />
-                    On track
-                  </span>
-                )}
-              </td>
-            </tr>
-          )
-        })}
-      </tbody>
-    </table>
+    <div className="space-y-2">
+      {sorted.map((r) => {
+        const isLeader = r.rank === 1
+        const isStruggling = r.pct < 80
+        const barWidth = (r.pct / maxPct) * 100
+
+        return (
+          <div
+            key={r.name}
+            className={`rounded-lg p-3.5 border transition-all ${
+              isLeader ? 'bg-teal-wash/30 border-teal/30' : isStruggling ? 'bg-rust-wash/20 border-rust/20' : 'border-line'
+            }`}
+          >
+            <div className="flex items-start justify-between gap-3 mb-2.5">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-baseline gap-2">
+                  {/* Rank badge */}
+                  <span className="font-mono text-xs font-bold text-ink-soft">#{r.rank}</span>
+                  <span className="font-semibold text-sm text-ink truncate">{r.name}</span>
+                  {isLeader && (
+                    <span className="ml-auto text-lg shrink-0">🏆</span>
+                  )}
+                </div>
+              </div>
+
+              {/* Percentage display */}
+              <div className="text-right shrink-0">
+                <div className="font-mono font-bold text-2xl text-ink">{r.pct}%</div>
+                <div className="text-[10px] text-ink-soft font-medium mt-0.5">
+                  {isStruggling ? '⚠️ Needs attention' : isLeader ? '✓ Leading' : '✓ Good'}
+                </div>
+              </div>
+            </div>
+
+            {/* Progress bar */}
+            <div className="w-full h-1.5 bg-line rounded-full overflow-hidden">
+              <div
+                className={`h-full rounded-full transition-all ${
+                  isLeader ? 'bg-teal-deep' : isStruggling ? 'bg-rust' : 'bg-amber'
+                }`}
+                style={{ width: `${barWidth}%` }}
+              />
+            </div>
+
+            {/* Gap analysis */}
+            {r.pct < 100 && (
+              <div className="text-[11px] text-ink-soft mt-2">
+                {100 - r.pct}% gap to 100%
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
   )
 }
