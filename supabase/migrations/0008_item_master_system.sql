@@ -212,7 +212,7 @@ returns table (
   ketersesuaian_pct numeric,
   total_stations int,
   audited_stations int,
-  last_audit_date timestamp,
+  last_audit_date timestamptz,
   variance_value decimal,
   trend_direction text
 ) as $$
@@ -263,8 +263,8 @@ begin
     cs.clinic_id,
     cs.clinic_name,
     round(coalesce(cs.avg_ketersesuaian, 0)::numeric, 1),
-    cs.total_stations,
-    cs.audited_stations,
+    cs.total_stations::int,
+    cs.audited_stations::int,
     cs.last_audit,
     coalesce(vs.total_variance, 0),
     case
@@ -319,23 +319,23 @@ begin
   ),
   totals as (
     select
-      item_id, sku, item_name, category, cost_price,
-      sum(qty_sistem) as total_sistem,
-      sum(qty_fisik) as total_fisik,
-      sum(qty_sistem - qty_fisik) as total_variance
-    from scored_lines
-    group by item_id, sku, item_name, category, cost_price
+      sl.item_id, sl.sku, sl.item_name, sl.category, sl.cost_price,
+      sum(sl.qty_sistem) as total_sistem,
+      sum(sl.qty_fisik) as total_fisik,
+      sum(sl.qty_sistem - sl.qty_fisik) as total_variance
+    from scored_lines sl
+    group by sl.item_id, sl.sku, sl.item_name, sl.category, sl.cost_price
   ),
   by_clinic as (
     select
-      item_id,
-      clinic_name,
+      sl.item_id,
+      sl.clinic_name,
       dense_rank() over (
-        partition by item_id
-        order by abs(sum(qty_sistem - qty_fisik)) desc
+        partition by sl.item_id
+        order by abs(sum(sl.qty_sistem - sl.qty_fisik)) desc
       ) as clinic_rank
-    from scored_lines
-    group by item_id, clinic_name
+    from scored_lines sl
+    group by sl.item_id, sl.clinic_name
   )
   select
     t.item_id,

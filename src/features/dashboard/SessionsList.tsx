@@ -50,6 +50,28 @@ function sessionKetersesuaian(stations: SessionWithStations['stations']) {
   return Math.round((pcts.reduce((a, b) => a + b, 0) / pcts.length) * 10) / 10
 }
 
+function TrashIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="3 6 5 6 21 6" />
+      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+      <path d="M10 11v6" />
+      <path d="M14 11v6" />
+      <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+    </svg>
+  )
+}
+
+function InfoIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10" />
+      <line x1="12" y1="16" x2="12" y2="11.5" />
+      <circle cx="12" cy="8" r="0.5" fill="currentColor" stroke="none" />
+    </svg>
+  )
+}
+
 export function SessionsList({
   items,
   onSelect,
@@ -61,6 +83,7 @@ export function SessionsList({
 }) {
   const [confirmingId, setConfirmingId] = useState<string | null>(null)
   const [removingId, setRemovingId] = useState<string | null>(null)
+  const [infoId, setInfoId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   async function handleRemove(sessionId: string) {
@@ -95,15 +118,35 @@ export function SessionsList({
         return (
           <div
             key={session.id}
-            className="w-full border border-line rounded-[9px] px-4 py-3.5 mb-2.5 bg-paper flex items-center justify-between gap-3 hover:border-teal transition-colors"
+            className="relative w-full border border-line rounded-[9px] px-4 py-3.5 mb-2.5 bg-paper flex items-center justify-between gap-3 hover:border-teal transition-colors"
           >
-            <button type="button" onClick={() => onSelect(session.id)} className="text-left flex-1">
-              <div className="font-semibold text-sm">{session.clinic_name}</div>
-              <div className="text-xs text-ink-soft font-mono mt-0.5">
-                {new Date(session.started_at).toLocaleString()} · started by {session.started_by} · {submitted}/
-                {stations.length} dental
+            <button type="button" onClick={() => onSelect(session.id)} className="text-left flex-1 flex items-center gap-2">
+              <div>
+                <div className="font-semibold text-sm">{session.clinic_name}</div>
+                <div className="text-xs text-ink-soft font-mono mt-0.5">
+                  {submitted}/{stations.length} dental
+                </div>
               </div>
             </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation()
+                setInfoId(infoId === session.id ? null : session.id)
+              }}
+              className="text-ink-soft hover:text-ink transition-colors shrink-0"
+              aria-label="Session details"
+            >
+              <InfoIcon />
+            </button>
+            {infoId === session.id && (
+              <div
+                className="absolute left-4 top-full mt-1 z-10 bg-ink text-white text-xs font-mono rounded-lg px-3 py-2 shadow-lg whitespace-nowrap"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {new Date(session.started_at).toLocaleString()} · started by {session.started_by}
+              </div>
+            )}
             <div className="flex items-center gap-3.5 min-w-[150px] justify-end">
               {pct !== null && <span className="font-mono text-xs text-ink-soft">{pct}% avg</span>}
               <TrackBadge auditType={session.audit_type} />
@@ -127,9 +170,10 @@ export function SessionsList({
                 <button
                   type="button"
                   onClick={() => setConfirmingId(session.id)}
-                  className="text-xs text-rust hover:underline"
+                  className="text-rust hover:bg-rust-wash rounded-md p-1.5 transition-colors"
+                  aria-label="Remove session"
                 >
-                  Remove
+                  <TrashIcon />
                 </button>
               )}
             </div>
