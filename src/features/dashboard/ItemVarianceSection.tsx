@@ -19,9 +19,14 @@ export function ItemVarianceSection({ periodDays = 30, clinicIds }: ItemVariance
   async function loadVariance() {
     setLoading(true)
     try {
-      const ids = clinicIds && clinicIds !== 'all' ? clinicIds : undefined
+      const ids = clinicIds && clinicIds !== 'all' && Array.isArray(clinicIds) ? clinicIds : undefined
       const data = await getItemVarianceAnalysis(periodDays, ids)
-      setVariance((data || []).slice(0, 15)) // Top 15 items by variance
+      // Filter to only items with actual discrepancy (Sistem != Fisik) and sort by absolute variance
+      const withDiscrepancy = (data || [])
+        .filter((item) => item.variance_qty !== 0)
+        .sort((a, b) => Math.abs(b.variance_value_rp || 0) - Math.abs(a.variance_value_rp || 0))
+        .slice(0, 15)
+      setVariance(withDiscrepancy)
     } catch (error) {
       console.error('Error loading item variance:', error)
     } finally {
@@ -91,9 +96,9 @@ export function ItemVarianceSection({ periodDays = 30, clinicIds }: ItemVariance
                 <div className="space-y-2">
                   {items.map((item) => {
                     const isShortage = item.variance_qty < 0
-                    const shortageClass = isShortage ? 'text-rust' : 'text-teal'
-                    const bgClass = isShortage ? 'bg-rust-wash/40' : 'bg-teal-wash/40'
-                    const badgeVariant = isShortage ? 'error' : 'info'
+                    const varianceClass = isShortage ? 'text-rust' : 'text-ink-soft'
+                    const bgClass = isShortage ? 'bg-rust-wash/40' : 'bg-line/20'
+                    const badgeVariant = isShortage ? 'error' : 'warning'
                     const isCritical = Math.abs(item.variance_pct) > 20
 
                     return (
@@ -118,11 +123,11 @@ export function ItemVarianceSection({ periodDays = 30, clinicIds }: ItemVariance
 
                           {/* Variance amount and % */}
                           <div className="text-right shrink-0">
-                            <p className={`font-mono font-bold text-lg ${shortageClass}`}>
+                            <p className={`font-mono font-bold text-lg ${varianceClass}`}>
                               {item.variance_qty < 0 ? '−' : '+'}
                               {Math.abs(item.variance_qty)}
                             </p>
-                            <p className={`text-xs font-semibold ${shortageClass}`}>
+                            <p className={`text-xs font-semibold ${varianceClass}`}>
                               {item.variance_pct}%
                             </p>
                           </div>
@@ -144,7 +149,7 @@ export function ItemVarianceSection({ periodDays = 30, clinicIds }: ItemVariance
                           </div>
                           <div>
                             <p className="text-ink-soft font-medium mb-1">Loss Value</p>
-                            <p className={`font-mono font-semibold ${shortageClass}`}>
+                            <p className={`font-mono font-semibold ${isShortage ? 'text-rust' : 'text-ink-soft'}`}>
                               {isShortage
                                 ? `Rp ${Math.abs(item.variance_value_rp || 0).toLocaleString()}`
                                 : '—'}
