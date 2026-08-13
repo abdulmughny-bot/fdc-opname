@@ -1,5 +1,6 @@
 import { useAuth } from './useAuth'
 import { Button } from '../../components'
+import { FDCLogo } from '../../components/FDCLogo'
 
 export function LoginScreen() {
   const { status, errorMessage, signInWithGoogle, retry } = useAuth()
@@ -9,8 +10,8 @@ export function LoginScreen() {
       <div className="w-full max-w-md">
         {/* Logo / Header Section */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-teal-deep/10 mb-4">
-            <span className="text-2xl font-display font-bold text-teal-deep">FDC</span>
+          <div className="inline-flex mb-4">
+            <FDCLogo size="lg" />
           </div>
           <h1 className="font-display text-3xl font-bold text-ink mb-2">Stock Opname</h1>
           <p className="text-ink-soft text-sm">Central Warehouse Inventory Control</p>

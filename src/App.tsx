@@ -3,6 +3,7 @@ import { AuthProvider, LoginScreen, useAuth, type Profile } from './features/aut
 import { Dashboard } from './features/dashboard'
 import { Wizard } from './features/wizard'
 import { AdminPage } from './features/admin'
+import { FDCLogo } from './components/FDCLogo'
 
 function initials(name: string) {
   return name
@@ -88,8 +89,8 @@ function AppShell() {
           <div className="flex items-center justify-between gap-4">
             {/* Logo & Title */}
             <button type="button" onClick={() => navigate('/')} className="flex items-center gap-3 text-left group">
-              <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-teal-deep to-teal flex items-center justify-center">
-                <span className="text-white font-display font-bold text-lg">FDC</span>
+              <div className="group-hover:scale-110 transition-transform">
+                <FDCLogo size="sm" />
               </div>
               <div className="hidden sm:flex flex-col gap-0.5">
                 <h1 className="font-display text-sm font-bold text-ink group-hover:text-teal-deep transition-colors">Stock Opname</h1>
