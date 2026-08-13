@@ -8,6 +8,7 @@ import { Gauge } from './Gauge'
 import { ClinicTable, type ClinicRow } from './ClinicTable'
 import { SessionsList } from './SessionsList'
 import { defaultFilters } from './types'
+import { Button, Card, CardHeader, CardTitle, CardBody } from '../../components'
 
 export function Dashboard({
   onNewAuditLog,
@@ -80,44 +81,116 @@ export function Dashboard({
   }, [filtered])
 
   return (
-    <div>
-      <div className="flex justify-end mb-4">
-        <button
-          type="button"
-          onClick={onNewAuditLog}
-          className="rounded-lg bg-teal-deep text-white font-semibold text-sm px-[18px] py-2.5 hover:bg-teal transition-colors"
-        >
-          + New audit log
-        </button>
+    <div className="space-y-6">
+      {/* Header Section */}
+      <div className="flex items-start justify-between">
+        <div>
+          <h1 className="font-display text-3xl font-bold text-ink mb-1">Dashboard</h1>
+          <p className="text-ink-soft">Manage and monitor your warehouse audits</p>
+        </div>
+        <Button variant="primary" size="lg" onClick={onNewAuditLog}>
+          ✚ New Audit
+        </Button>
       </div>
 
-      <FilterBar clinics={visibleClinics} agents={agents} filters={filters} onChange={setFilters} />
+      {/* Error State */}
+      {error && (
+        <div className="bg-error-wash border border-red-200 rounded-lg px-4 py-3 text-sm">
+          <p className="font-semibold text-error mb-1">Unable to load dashboard</p>
+          <p className="text-error text-xs">{error}</p>
+        </div>
+      )}
 
-      {error && <div className="bg-rust-wash text-rust border border-[#EEC2AC] rounded-lg px-3.5 py-3 text-sm mb-4">{error}</div>}
       {loading ? (
-        <div className="text-center py-12 text-sm text-ink-soft">Loading…</div>
+        <div className="grid grid-cols-3 gap-4">
+          {[...Array(3)].map((_, i) => (
+            <div key={i} className="bg-paper-secondary border border-line rounded-lg p-4 animate-pulse">
+              <div className="h-4 bg-line rounded w-1/2 mb-2" />
+              <div className="h-8 bg-line rounded" />
+            </div>
+          ))}
+        </div>
       ) : (
         <>
-          <StatRow activeCount={activeCount} finishedCount={finishedCount} companyPct={companyPct} totalFilled={totalFilled} />
+          {/* Quick Stats */}
+          <div className="grid grid-cols-3 gap-4">
+            <Card>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-ink-soft font-medium">Active Audits</p>
+                  <p className="text-3xl font-bold text-teal-deep mt-1">{activeCount}</p>
+                </div>
+                <div className="w-12 h-12 rounded-lg bg-teal-wash flex items-center justify-center text-xl">
+                  ▶
+                </div>
+              </div>
+            </Card>
 
-          <div className="grid grid-cols-[1.15fr_1fr] max-[860px]:grid-cols-1 gap-[18px]">
-            <div className="bg-paper border border-line rounded-[10px] p-[22px_24px]">
-              <h2 className="font-display text-base font-bold mb-1.5">Ketersesuaian — company-wide</h2>
-              <p className="text-[13px] text-ink-soft mb-4">Across finished sessions in this period, both tracks.</p>
-              <Gauge pct={companyPct} />
-            </div>
-            <div className="bg-paper border border-line rounded-[10px] p-[22px_24px]">
-              <h2 className="font-display text-base font-bold mb-1.5">By clinic</h2>
-              <p className="text-[13px] text-ink-soft mb-4">From finished sessions only.</p>
-              <ClinicTable rows={clinicRows} />
-            </div>
+            <Card>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-ink-soft font-medium">Finished Audits</p>
+                  <p className="text-3xl font-bold text-success mt-1">{finishedCount}</p>
+                </div>
+                <div className="w-12 h-12 rounded-lg bg-success-wash flex items-center justify-center text-xl">
+                  ✓
+                </div>
+              </div>
+            </Card>
+
+            <Card>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-ink-soft font-medium">Overall Match %</p>
+                  <p className="text-3xl font-bold text-ink mt-1">
+                    {companyPct !== null ? `${companyPct}%` : '—'}
+                  </p>
+                </div>
+                <div className="w-12 h-12 rounded-lg bg-rust-wash flex items-center justify-center text-xl">
+                  📊
+                </div>
+              </div>
+            </Card>
           </div>
 
-          <div className="bg-paper border border-line rounded-[10px] p-[22px_24px] mt-[18px]">
-            <h2 className="font-display text-base font-bold mb-1.5">Audit sessions</h2>
-            <p className="text-[13px] text-ink-soft mb-4">Active sessions can be resumed. Finished sessions show the report.</p>
-            <SessionsList items={filtered} onSelect={onSelectSession} onDeleted={reload} />
+          {/* Filters */}
+          <div className="bg-paper border border-line rounded-lg p-4">
+            <FilterBar clinics={visibleClinics} agents={agents} filters={filters} onChange={setFilters} />
           </div>
+
+          {/* Analytics Section */}
+          <div className="grid grid-cols-2 gap-6 max-[900px]:grid-cols-1">
+            <Card>
+              <CardHeader>
+                <CardTitle>Ketersesuaian — Company-wide</CardTitle>
+              </CardHeader>
+              <CardBody>
+                <p className="text-xs text-ink-soft mb-4">Across finished sessions in this period, both audit types.</p>
+                <Gauge pct={companyPct} />
+              </CardBody>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Performance by Clinic</CardTitle>
+              </CardHeader>
+              <CardBody>
+                <p className="text-xs text-ink-soft mb-4">Based on finished sessions only.</p>
+                <ClinicTable rows={clinicRows} />
+              </CardBody>
+            </Card>
+          </div>
+
+          {/* Sessions List */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Audit Sessions</CardTitle>
+            </CardHeader>
+            <CardBody>
+              <p className="text-xs text-ink-soft mb-4">Active sessions can be resumed. Finished sessions show the report.</p>
+              <SessionsList items={filtered} onSelect={onSelectSession} onDeleted={reload} />
+            </CardBody>
+          </Card>
         </>
       )}
     </div>
