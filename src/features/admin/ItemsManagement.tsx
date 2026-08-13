@@ -31,8 +31,17 @@ export function ItemsManagement() {
   const [approvalAction, setApprovalAction] = useState<'approve' | 'reject' | null>(null)
   const [rejectionReason, setRejectionReason] = useState('')
 
+  // Personal (single-item) import
+  const [newSKU, setNewSKU] = useState('')
+  const [newName, setNewName] = useState('')
+  const [newCategory, setNewCategory] = useState('')
+  const [newUnit, setNewUnit] = useState('Box')
+  const [newStdQty, setNewStdQty] = useState('')
+  const [newCost, setNewCost] = useState('')
+  const [addingItem, setAddingItem] = useState(false)
+  const [addItemError, setAddItemError] = useState('')
+
   const bulkFileRef = useRef<HTMLInputElement>(null)
-  const personalFileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     loadData()
@@ -48,6 +57,8 @@ export function ItemsManagement() {
       ])
 
       if (itemsRes.error) throw itemsRes.error
+      if (approvalsRes.error) throw approvalsRes.error
+      if (pricingRes.error) throw pricingRes.error
 
       const itemsData: ItemWithPricing[] = itemsRes.data || []
       const pricingMap = new Map((pricingRes.data || []).map((p) => [p.item_id, p]))
@@ -153,6 +164,39 @@ export function ItemsManagement() {
       if (bulkFileRef.current) bulkFileRef.current.value = ''
     } catch (error) {
       console.error('Error importing bulk items:', error)
+    }
+  }
+
+  async function handleAddSingleItem() {
+    setAddItemError('')
+    if (!newSKU.trim() || !newName.trim()) {
+      setAddItemError('SKU and Name are required.')
+      return
+    }
+
+    setAddingItem(true)
+    try {
+      const { error } = await supabase.from('item_master').insert({
+        sku: newSKU.trim(),
+        name: newName.trim(),
+        category: newCategory.trim() || null,
+        unit: newUnit.trim() || 'Box',
+        std_qty_per_location: newStdQty ? parseInt(newStdQty) : null,
+        cost_price: newCost ? parseFloat(newCost) : null,
+      })
+      if (error) throw error
+
+      setNewSKU('')
+      setNewName('')
+      setNewCategory('')
+      setNewUnit('Box')
+      setNewStdQty('')
+      setNewCost('')
+      await loadData()
+    } catch (error: any) {
+      setAddItemError(error?.message || 'Failed to add item.')
+    } finally {
+      setAddingItem(false)
     }
   }
 
@@ -334,18 +378,54 @@ export function ItemsManagement() {
             </CardHeader>
             <CardBody>
               <p className="text-sm text-ink-soft mb-4">Add a single item to the master list</p>
-              <input
-                ref={personalFileRef}
-                type="file"
-                accept=".csv"
-                onChange={(e) => {
-                  if (e.target.files?.[0]) handleBulkImport(e.target.files[0])
-                }}
-                className="hidden"
-              />
-              <Button onClick={() => personalFileRef.current?.click()} variant="primary" className="w-full">
-                Add Single Item
-              </Button>
+              <div className="space-y-2">
+                <input
+                  value={newSKU}
+                  onChange={(e) => setNewSKU(e.target.value)}
+                  placeholder="SKU *"
+                  className="w-full border border-line rounded-lg p-2 text-sm"
+                />
+                <input
+                  value={newName}
+                  onChange={(e) => setNewName(e.target.value)}
+                  placeholder="Name *"
+                  className="w-full border border-line rounded-lg p-2 text-sm"
+                />
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    value={newCategory}
+                    onChange={(e) => setNewCategory(e.target.value)}
+                    placeholder="Category"
+                    className="w-full border border-line rounded-lg p-2 text-sm"
+                  />
+                  <input
+                    value={newUnit}
+                    onChange={(e) => setNewUnit(e.target.value)}
+                    placeholder="Unit"
+                    className="w-full border border-line rounded-lg p-2 text-sm"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    value={newStdQty}
+                    onChange={(e) => setNewStdQty(e.target.value)}
+                    placeholder="Std Qty"
+                    type="number"
+                    className="w-full border border-line rounded-lg p-2 text-sm"
+                  />
+                  <input
+                    value={newCost}
+                    onChange={(e) => setNewCost(e.target.value)}
+                    placeholder="Cost Price"
+                    type="number"
+                    className="w-full border border-line rounded-lg p-2 text-sm"
+                  />
+                </div>
+                {addItemError && <p className="text-xs text-error">{addItemError}</p>}
+                <Button onClick={handleAddSingleItem} variant="primary" className="w-full" disabled={addingItem}>
+                  {addingItem ? 'Adding...' : 'Add Item'}
+                </Button>
+              </div>
             </CardBody>
           </Card>
         </div>

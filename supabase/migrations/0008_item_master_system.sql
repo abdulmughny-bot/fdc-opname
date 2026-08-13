@@ -47,11 +47,11 @@ create index idx_item_approval_uploaded_by on item_approval(uploaded_by);
 create table item_pricing (
   id uuid primary key default gen_random_uuid(),
   item_id uuid not null references item_master(id) on delete cascade,
-  clinic_id uuid references clinics(id),
+  clinic_id text references clinics(id),
   cost_price decimal(12,2),
   selling_price decimal(12,2) not null,
   margin_pct decimal(5,2),
-  effective_date date default today(),
+  effective_date date default current_date,
   updated_by uuid not null references profiles(id),
   updated_at timestamp default now(),
   constraint price_must_be_positive check (selling_price > 0)
@@ -60,6 +60,11 @@ create table item_pricing (
 create index idx_item_pricing_item_id on item_pricing(item_id);
 create index idx_item_pricing_clinic_id on item_pricing(clinic_id);
 create index idx_item_pricing_effective_date on item_pricing(effective_date);
+
+-- clinic_id is nullable (global price); coalesce so ON CONFLICT can target the
+-- "no clinic override" row too, since Postgres treats NULLs as distinct.
+create unique index idx_item_pricing_item_clinic_uq
+  on item_pricing (item_id, coalesce(clinic_id, '__global__'));
 
 -- 4. ROLE-BASED ACCESS CONTROL
 create table role_permissions (
@@ -70,7 +75,7 @@ create table role_permissions (
   can_approve_items boolean default false,
   can_edit_item_master boolean default false,
   can_manage_users boolean default false,
-  accessible_clinic_ids uuid[] default array[]::uuid[],
+  accessible_clinic_ids text[] default array[]::text[],
   created_at timestamp default now(),
   updated_at timestamp default now(),
   unique(user_id, role)
@@ -79,21 +84,6 @@ create table role_permissions (
 create index idx_role_permissions_user_id on role_permissions(user_id);
 create index idx_role_permissions_role on role_permissions(role);
 
--- 5. ITEM USAGE HISTORY (Track which items used in audits)
-create table item_audit_usage (
-  id uuid primary key default gen_random_uuid(),
-  item_id uuid not null references item_master(id),
-  session_id uuid not null references sessions(id) on delete cascade,
-  room_id uuid not null references rooms(id),
-  qty_sistem int,
-  qty_fisik int,
-  variance int,
-  variance_pct decimal(5,2),
-  created_at timestamp default now()
-);
-
-create index idx_item_audit_usage_item_id on item_audit_usage(item_id);
-create index idx_item_audit_usage_session_id on item_audit_usage(session_id);
 
 -- RPC: Approve item (Lead only)
 create or replace function approve_item(
@@ -173,8 +163,8 @@ $$ language plpgsql security definer;
 -- RPC: Update item pricing (Lead only)
 create or replace function update_item_pricing(
   p_item_id uuid,
-  p_clinic_id uuid default null,
   p_selling_price decimal,
+  p_clinic_id text default null,
   p_cost_price decimal default null
 )
 returns void as $$
@@ -201,7 +191,7 @@ begin
 
   insert into item_pricing (item_id, clinic_id, selling_price, cost_price, margin_pct, updated_by)
   values (p_item_id, p_clinic_id, p_selling_price, p_cost_price, v_margin_pct, v_profile.id)
-  on conflict (item_id, clinic_id) do update
+  on conflict (item_id, coalesce(clinic_id, '__global__')) do update
   set
     selling_price = p_selling_price,
     cost_price = p_cost_price,
@@ -217,7 +207,7 @@ $$ language plpgsql security definer;
 -- RPC: Get clinic rankings by ketersesuaian
 create or replace function get_clinic_rankings(p_period_type text default 'month')
 returns table (
-  clinic_id uuid,
+  clinic_id text,
   clinic_name text,
   ketersesuaian_pct numeric,
   total_stations int,
@@ -228,55 +218,79 @@ returns table (
 ) as $$
 begin
   return query
-  with current_period as (
-    select
-      s.clinic_id,
-      c.name as clinic_name,
-      avg(ds.ketersesuaian) as avg_ketersesuaian,
-      count(distinct ds.room_id) as total_stations,
-      count(distinct case when ds.status = 'Submitted' then ds.room_id end) as audited_stations,
-      max(s.finished_at) as last_audit,
-      sum(abs(dlog.qty_sistem - dlog.qty_fisik)) as total_variance
+  with finished_sessions as (
+    select s.id, s.clinic_id, c.name as clinic_name, s.finished_at
     from sessions s
     join clinics c on c.id = s.clinic_id
-    left join dental_status ds on ds.session_id = s.id and ds.deleted_at is null
-    left join dental_log_lines dlog on dlog.session_id = s.id and dlog.room_id = ds.room_id
     where s.status = 'Finished'
       and s.deleted_at is null
       and (p_period_type = 'month' and date_trunc('month', s.finished_at) = date_trunc('month', now())
            or p_period_type = 'quarter' and date_trunc('quarter', s.finished_at) = date_trunc('quarter', now())
            or p_period_type = 'year' and date_trunc('year', s.finished_at) = date_trunc('year', now()))
-    group by s.clinic_id, c.name
+  ),
+  station_stats as (
+    select
+      fs.clinic_id,
+      fs.clinic_name,
+      fs.finished_at,
+      ds.room_id,
+      ds.ketersesuaian,
+      ds.status
+    from finished_sessions fs
+    join dental_status ds on ds.session_id = fs.id and ds.deleted_at is null
+  ),
+  variance_stats as (
+    select
+      fs.clinic_id,
+      sum(abs(dlog.qty_sistem - dlog.qty_fisik)) as total_variance
+    from finished_sessions fs
+    join dental_log_lines dlog on dlog.session_id = fs.id
+    where dlog.qty_sistem is not null and dlog.qty_fisik is not null
+    group by fs.clinic_id
+  ),
+  clinic_summary as (
+    select
+      ss.clinic_id,
+      ss.clinic_name,
+      avg(ss.ketersesuaian) as avg_ketersesuaian,
+      count(distinct ss.room_id) as total_stations,
+      count(distinct case when ss.status = 'Submitted' then ss.room_id end) as audited_stations,
+      max(ss.finished_at) as last_audit
+    from station_stats ss
+    group by ss.clinic_id, ss.clinic_name
   )
   select
-    cp.clinic_id,
-    cp.clinic_name,
-    round(coalesce(cp.avg_ketersesuaian, 0)::numeric, 1),
-    cp.total_stations,
-    cp.audited_stations,
-    cp.last_audit,
-    cp.total_variance,
+    cs.clinic_id,
+    cs.clinic_name,
+    round(coalesce(cs.avg_ketersesuaian, 0)::numeric, 1),
+    cs.total_stations,
+    cs.audited_stations,
+    cs.last_audit,
+    coalesce(vs.total_variance, 0),
     case
-      when cp.avg_ketersesuaian >= 90 then 'Excellent'
-      when cp.avg_ketersesuaian >= 80 then 'Good'
-      when cp.avg_ketersesuaian >= 70 then 'Fair'
+      when cs.avg_ketersesuaian >= 90 then 'Excellent'
+      when cs.avg_ketersesuaian >= 80 then 'Good'
+      when cs.avg_ketersesuaian >= 70 then 'Fair'
       else 'Poor'
     end as trend_direction
-  from current_period cp
-  order by cp.avg_ketersesuaian desc;
+  from clinic_summary cs
+  left join variance_stats vs on vs.clinic_id = cs.clinic_id
+  order by cs.avg_ketersesuaian desc;
 end;
 $$ language plpgsql security definer;
 
 -- RPC: Get item variance analysis (financial impact)
+-- Reads live audit data (dental_log_lines, matched to item_master by SKU) rather
+-- than a separately-tracked usage table, since nothing else populates one.
 create or replace function get_item_variance_analysis(p_period_days int default 30)
 returns table (
   item_id uuid,
   sku text,
   item_name text,
   category text,
-  total_sistem_qty int,
-  total_fisik_qty int,
-  variance_qty int,
+  total_sistem_qty numeric,
+  total_fisik_qty numeric,
+  variance_qty numeric,
   variance_pct numeric,
   cost_per_unit decimal,
   variance_value_rp decimal,
@@ -284,40 +298,60 @@ returns table (
 ) as $$
 begin
   return query
-  with variance_data as (
+  with scored_lines as (
     select
-      im.id,
+      im.id as item_id,
       im.sku,
-      im.name,
+      im.name as item_name,
       im.category,
       im.cost_price,
-      sum(iau.qty_sistem) as total_sistem,
-      sum(iau.qty_fisik) as total_fisik,
-      sum(iau.qty_sistem - iau.qty_fisik) as total_variance,
       c.name as clinic_name,
-      dense_rank() over (partition by iau.item_id order by abs(sum(iau.qty_sistem - iau.qty_fisik)) desc) as clinic_rank
-    from item_audit_usage iau
-    join item_master im on im.id = iau.item_id
-    join rooms r on r.id = iau.room_id
+      dlog.qty_sistem,
+      dlog.qty_fisik
+    from dental_log_lines dlog
+    join sessions s on s.id = dlog.session_id and s.deleted_at is null
+    join rooms r on r.id = dlog.room_id
     join clinics c on c.id = r.clinic_id
-    where iau.created_at >= now() - make_interval(days := p_period_days)
-    group by im.id, im.sku, im.name, im.category, im.cost_price, c.name
+    join item_master im on im.sku = dlog.barang_sku
+    where dlog.qty_sistem is not null
+      and dlog.qty_fisik is not null
+      and s.started_at >= now() - make_interval(days := p_period_days)
+  ),
+  totals as (
+    select
+      item_id, sku, item_name, category, cost_price,
+      sum(qty_sistem) as total_sistem,
+      sum(qty_fisik) as total_fisik,
+      sum(qty_sistem - qty_fisik) as total_variance
+    from scored_lines
+    group by item_id, sku, item_name, category, cost_price
+  ),
+  by_clinic as (
+    select
+      item_id,
+      clinic_name,
+      dense_rank() over (
+        partition by item_id
+        order by abs(sum(qty_sistem - qty_fisik)) desc
+      ) as clinic_rank
+    from scored_lines
+    group by item_id, clinic_name
   )
   select
-    vd.id,
-    vd.sku,
-    vd.name,
-    vd.category,
-    coalesce(vd.total_sistem, 0),
-    coalesce(vd.total_fisik, 0),
-    coalesce(vd.total_variance, 0),
-    round((coalesce(vd.total_variance, 0)::numeric / nullif(vd.total_sistem, 0) * 100)::numeric, 2),
-    vd.cost_price,
-    (coalesce(vd.total_variance, 0)::numeric * coalesce(vd.cost_price, 0))::decimal,
-    vd.clinic_name
-  from variance_data vd
-  where vd.clinic_rank = 1
-  order by abs((coalesce(vd.total_variance, 0)::numeric * coalesce(vd.cost_price, 0))) desc;
+    t.item_id,
+    t.sku,
+    t.item_name,
+    t.category,
+    coalesce(t.total_sistem, 0),
+    coalesce(t.total_fisik, 0),
+    coalesce(t.total_variance, 0),
+    round((coalesce(t.total_variance, 0) / nullif(t.total_sistem, 0) * 100)::numeric, 2),
+    t.cost_price,
+    (coalesce(t.total_variance, 0) * coalesce(t.cost_price, 0))::decimal,
+    bc.clinic_name
+  from totals t
+  left join by_clinic bc on bc.item_id = t.item_id and bc.clinic_rank = 1
+  order by abs(coalesce(t.total_variance, 0) * coalesce(t.cost_price, 0)) desc;
 end;
 $$ language plpgsql security definer;
 
