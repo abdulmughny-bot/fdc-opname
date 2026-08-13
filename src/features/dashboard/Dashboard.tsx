@@ -9,6 +9,8 @@ import { ClinicTable, type ClinicRow } from './ClinicTable'
 import { SessionsList } from './SessionsList'
 import { defaultFilters } from './types'
 import { Button, Card, CardHeader, CardTitle, CardBody } from '../../components'
+import { ClinicRankings } from './ClinicRankings'
+import { ItemVarianceSection } from './ItemVarianceSection'
 
 export function Dashboard({
   onNewAuditLog,
@@ -159,26 +161,34 @@ export function Dashboard({
           </div>
 
           {/* Analytics Section */}
-          <div className="grid grid-cols-2 gap-6 max-[900px]:grid-cols-1">
-            <Card>
-              <CardHeader>
-                <CardTitle>Ketersesuaian — Company-wide</CardTitle>
-              </CardHeader>
-              <CardBody>
-                <p className="text-xs text-ink-soft mb-4">Across finished sessions in this period, both audit types.</p>
-                <Gauge pct={companyPct} />
-              </CardBody>
-            </Card>
+          <div className="space-y-6">
+            <div className="grid grid-cols-2 gap-6 max-[900px]:grid-cols-1">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Ketersesuaian — Company-wide</CardTitle>
+                </CardHeader>
+                <CardBody>
+                  <p className="text-xs text-ink-soft mb-4">Across finished sessions in this period, both audit types.</p>
+                  <Gauge pct={companyPct} />
+                </CardBody>
+              </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Performance by Clinic</CardTitle>
-              </CardHeader>
-              <CardBody>
-                <p className="text-xs text-ink-soft mb-4">Based on finished sessions only.</p>
-                <ClinicTable rows={clinicRows} />
-              </CardBody>
-            </Card>
+              <Card>
+                <CardHeader>
+                  <CardTitle>Performance by Clinic</CardTitle>
+                </CardHeader>
+                <CardBody>
+                  <p className="text-xs text-ink-soft mb-4">Based on finished sessions only.</p>
+                  <ClinicTable rows={clinicRows} />
+                </CardBody>
+              </Card>
+            </div>
+
+            {/* Clinic Rankings */}
+            <ClinicRankings periodType={filters.periodType === 'month' ? 'month' : filters.periodType === 'quarter' ? 'quarter' : 'year'} />
+
+            {/* Item Variance Analysis */}
+            <ItemVarianceSection periodDays={30} />
           </div>
 
           {/* Sessions List */}

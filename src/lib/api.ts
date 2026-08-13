@@ -144,3 +144,99 @@ export interface AdminUserRow {
 }
 
 export const adminListUsers = () => call<AdminUserRow[]>('admin_list_users')
+
+// ---- item master system ----
+
+export interface ItemMasterRow {
+  id: string
+  sku: string
+  name: string
+  category: string | null
+  unit: string
+  std_qty_per_location: number | null
+  cost_price: number | null
+  status: 'Active' | 'Inactive' | 'Discontinued'
+  created_at: string
+  created_by: string | null
+}
+
+export interface ItemApprovalRow {
+  id: string
+  item_id: string
+  status: 'Pending' | 'Approved' | 'Rejected'
+  uploaded_by: string
+  reviewed_by: string | null
+  rejection_reason: string | null
+  admin_notes: string | null
+  created_at: string
+  approved_at: string | null
+  item?: ItemMasterRow
+}
+
+export interface ItemPricingRow {
+  id: string
+  item_id: string
+  clinic_id: string | null
+  cost_price: number | null
+  selling_price: number
+  margin_pct: number | null
+  effective_date: string
+  updated_by: string
+  updated_at: string
+}
+
+export interface ClinicRanking {
+  clinic_id: string
+  clinic_name: string
+  ketersesuaian_pct: number
+  total_stations: number
+  audited_stations: number
+  last_audit_date: string | null
+  variance_value: number | null
+  trend_direction: string
+}
+
+export interface ItemVarianceAnalysis {
+  item_id: string
+  sku: string
+  item_name: string
+  category: string | null
+  total_sistem_qty: number
+  total_fisik_qty: number
+  variance_qty: number
+  variance_pct: number
+  cost_per_unit: number | null
+  variance_value_rp: number | null
+  most_affected_clinic: string
+}
+
+// Item Management RPCs
+export const approveItem = (itemApprovalId: string, adminNotes?: string) =>
+  call<void>('approve_item', { p_item_approval_id: itemApprovalId, p_admin_notes: adminNotes })
+
+export const rejectItem = (itemApprovalId: string, rejectionReason: string, adminNotes?: string) =>
+  call<void>('reject_item', {
+    p_item_approval_id: itemApprovalId,
+    p_rejection_reason: rejectionReason,
+    p_admin_notes: adminNotes,
+  })
+
+export const updateItemPricing = (
+  itemId: string,
+  sellingPrice: number,
+  costPrice?: number,
+  clinicId?: string
+) =>
+  call<void>('update_item_pricing', {
+    p_item_id: itemId,
+    p_clinic_id: clinicId,
+    p_selling_price: sellingPrice,
+    p_cost_price: costPrice,
+  })
+
+// Dashboard Analytics RPCs
+export const getClinicRankings = (periodType: 'month' | 'quarter' | 'year' = 'month') =>
+  call<ClinicRanking[]>('get_clinic_rankings', { p_period_type: periodType })
+
+export const getItemVarianceAnalysis = (periodDays: number = 30) =>
+  call<ItemVarianceAnalysis[]>('get_item_variance_analysis', { p_period_days: periodDays })

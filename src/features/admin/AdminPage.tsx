@@ -1,11 +1,16 @@
 import { NavLink, Navigate, Route, Routes, useNavigate } from 'react-router-dom'
 import { Button } from '../../components'
+import { useAuth } from '../auth'
 import { PeopleAccess } from './PeopleAccess'
 import { ClinicRecipients } from './ClinicRecipients'
 import { EmailTemplate } from './EmailTemplate'
 import { AdminSettings } from './AdminSettings'
+import { ItemsManagement } from './ItemsManagement'
+import { ItemPricing } from './ItemPricing'
 
 const TABS = [
+  { path: 'items', label: '📦 Item Master', icon: '📦' },
+  { path: 'pricing', label: '💰 Pricing (Lead)', icon: '💰' },
   { path: 'people', label: '👥 People & Access', icon: '👥' },
   { path: 'recipients', label: '📧 Clinic Recipients', icon: '📧' },
   { path: 'email', label: '✉️ Email Template', icon: '✉️' },
@@ -48,12 +53,14 @@ export function AdminPage() {
       {/* Content */}
       <div className="bg-paper border border-line rounded-lg p-6">
         <Routes>
-          <Route index element={<Navigate to="/admin/people" replace />} />
+          <Route index element={<Navigate to="/admin/items" replace />} />
+          <Route path="items" element={<ItemsManagement />} />
+          <Route path="pricing" element={<ItemPricing />} />
           <Route path="people" element={<PeopleAccess />} />
           <Route path="recipients" element={<ClinicRecipients />} />
           <Route path="email" element={<EmailTemplate />} />
           <Route path="settings/*" element={<AdminSettings />} />
-          <Route path="*" element={<Navigate to="/admin/people" replace />} />
+          <Route path="*" element={<Navigate to="/admin/items" replace />} />
         </Routes>
       </div>
     </div>
