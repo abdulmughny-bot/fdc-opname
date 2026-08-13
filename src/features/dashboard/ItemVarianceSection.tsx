@@ -41,7 +41,7 @@ export function ItemVarianceSection({ periodDays = 30, filters }: ItemVarianceSe
 
   const totalVariance = variance.reduce((sum, item) => sum + (item.variance_value_rp || 0), 0)
   const clinicIds = filters && filters.clinicIds !== 'all' && Array.isArray(filters.clinicIds) ? filters.clinicIds : undefined
-  const showClinicGrouping = clinicIds && clinicIds !== 'all' && Array.isArray(clinicIds) && clinicIds.length > 1
+  const showClinicGrouping = clinicIds && Array.isArray(clinicIds) && clinicIds.length > 1
 
   // Group items by clinic if multiple clinics selected
   const variantsByClinic: Array<[string, ItemVarianceAnalysis[]]> = showClinicGrouping
