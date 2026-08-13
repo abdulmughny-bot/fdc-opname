@@ -57,8 +57,10 @@ function StationUploadRow({
     try {
       await applyUpload(sessionId, roomId, 'Sistem', parsed.valid)
       setDone(true)
-      setParsed(null)
+      // Don't clear parsed — user can upload another file to this station immediately
       onUploaded()
+      // Auto-reset success banner after 2s so they can upload again
+      setTimeout(() => setDone(false), 2000)
     } catch (err) {
       setUploadError((err as Error).message)
     } finally {

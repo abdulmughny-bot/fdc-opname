@@ -1,21 +1,57 @@
 :root {
-  --bg: #F6F6F3;
+  /* Backgrounds & Surfaces */
+  --bg: #F8F9FA;
   --paper: #FFFFFF;
-  --ink: #1B231F;
-  --ink-soft: #5B655F;
-  --line: #DDDFD8;
+  --paper-secondary: #FAFBFC;
 
-  --teal: #1F6F64;
-  --teal-deep: #134D45;
+  /* Text Colors */
+  --ink: #1B2830;
+  --ink-soft: #5B7282;
+  --ink-lighter: #8B95A4;
+
+  /* Borders & Dividers */
+  --line: #E1E5EB;
+  --line-soft: #EEF1F5;
+
+  /* FDC Primary: Hijau Apel */
+  --teal: #5ABA4F;
+  --teal-deep: #146D38;
+  --teal-light: #7EC76A;
   --teal-wash: #E4F0EC;
+  --teal-muted: #B4DFB0;
 
-  --rust: #B3401F;
-  --rust-wash: #FBE9E2;
+  /* FDC Secondary: Merah muda */
+  --rust: #EA73AC;
+  --rust-deep: #D84A8D;
+  --rust-wash: #F2BBC7;
+  --rust-muted: #F5A7C1;
 
-  --amber: #B8862E;
-  --amber-wash: #FBF1DE;
+  /* Status & Semantic Colors */
+  --amber: #C92984;
+  --amber-wash: #FBE9E2;
+  --success: #5ABA4F;
+  --success-wash: #E4F0EC;
+  --warning: #F59E0B;
+  --warning-wash: #FEF3C7;
+  --error: #DC2626;
+  --error-wash: #FEE2E2;
+  --info: #3B82F6;
+  --info-wash: #EFF6FF;
 
-  --font-display: 'Space Grotesk', sans-serif;
-  --font-body: 'IBM Plex Sans', sans-serif;
+  /* Shadows */
+  --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+
+  /* Typography */
+  --font-display: 'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-body: 'Open Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-mono: 'IBM Plex Mono', monospace;
+
+  /* Transitions */
+  --transition-fast: 150ms ease-out;
+  --transition-base: 200ms ease-out;
+  --transition-slow: 300ms ease-out;
 }
